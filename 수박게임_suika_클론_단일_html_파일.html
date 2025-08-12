@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>수박게임 클론 (Suika-like)</title>
+<style>
+  :root{
+    --bg0:#0b0f14; --bg1:#121826; --chip:#1b2436; --text:#e8eefc; --accent:#79ffe1; --danger:#ff5a5f;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg0),var(--bg1));color:var(--text);
+    font:14px/1.4 system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+  .wrap{position:fixed;inset:0;display:grid;place-items:center;padding:12px}
+  .board{position:relative;width:min(92vw,520px);aspect-ratio:3/4;max-height:96vh}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:16px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .hud{position:absolute;inset:0;pointer-events:none}
+  .top{position:absolute;left:8px;right:8px;top:8px;display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center}
+  .chip{pointer-events:auto;background:var(--chip);padding:6px 10px;border-radius:999px;display:inline-flex;gap:8px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.25)}
+  .title{font-weight:700;opacity:.9}
+  .nextbox{display:flex;align-items:center;gap:8px}
+  .next{width:28px;height:28px;border-radius:50%;display:inline-block;border:2px solid #fff4}
+  .btn{pointer-events:auto;-webkit-tap-highlight-color: transparent;background:#22304a;border:0;color:var(--text);padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+  .btn:active{transform:translateY(1px)}
+  .mobile-bar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;gap:8px}
+  .mobile-bar .btn{flex:1}
+  .toast{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-weight:700;letter-spacing:.3px;opacity:.0;transition:opacity .2s}
+  .toast.show{opacity:.9}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="board">
+      <canvas id="cv" width="480" height="720"></canvas>
+      <div class="hud">
+        <div class="top">
+          <div class="chip"><span class="title">점수</span><span id="score">0</span></div>
+          <div class="chip nextbox"><span class="title">다음</span><span id="next" class="next"></span></div>
+          <button class="btn" id="restart">다시하기 (R)</button>
+        </div>
+        <div class="mobile-bar">
+          <button class="btn" id="leftBtn">◀︎ 왼쪽</button>
+          <button class="btn" id="dropBtn">떨구기</button>
+          <button class="btn" id="rightBtn">오른쪽 ▶︎</button>
+        </div>
+        <div id="toast" class="toast">게임 오버 — R 키 또는 다시하기</div>
+      </div>
+    </div>
+  </div>
+<script>
+(() => {
+  const canvas = document.getElementById('cv');
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+  // HiDPI scaling
+  const BASE_W = 480, BASE_H = 720;
+  canvas.width = BASE_W * DPR; canvas.height = BASE_H * DPR; ctx.scale(DPR, DPR);
+
+  // Arena geometry
+  const WALL = 40;            // side wall x
+  const FLOOR = BASE_H - 40;  // floor y
+  const TOP_LINE = 110;       // danger/top line y
+
+  // Physics constants
+  const STEP = 1/60;          // fixed physics step
+  const GRAV = 1800;          // px/s^2 (scaled for feel)
+  const RESTITUTION = 0.05;   // bounciness
+  const FRICTION = 0.995;     // air friction
+  const WALL_FRICTION = 0.98; // floor sliding
+
+  // Fruit defs (small -> large)
+  const FRUITS = [
+    {name:'체리', r:14,  color:'#ff5a5f', score:1},
+    {name:'딸기', r:18,  color:'#f94d6a', score:3},
+    {name:'포도', r:22,  color:'#7b5bd6', score:6},
+    {name:'귤',   r:26,  color:'#ff9f1c', score:10},
+    {name:'레몬', r:30,  color:'#ffd166', score:15},
+    {name:'사과', r:34,  color:'#ef476f', score:21},
+    {name:'배',   r:40,  color:'#81b29a', score:28},
+    {name:'복숭아',r:46, color:'#f4a261', score:36},
+    {name:'파인', r:54,  color:'#e9c46a', score:45},
+    {name:'메론', r:64,  color:'#6cc070', score:55},
+    {name:'수박', r:76,  color:'#2a9d8f', score:70},
+  ];
+  const MAX_LEVEL = FRUITS.length - 1;
+
+  // Random low-level distribution (편향: 작은 과일이 잘 나옴)
+  const LOW_DIST = [40, 25, 18, 12, 5]; // level 0..4
+  const LOW_CDF = LOW_DIST.reduce((acc,v,i)=>{acc.push((acc[i-1]||0)+v);return acc;},[]);
+  const LOW_SUM = LOW_CDF[LOW_CDF.length-1];
+  function randLowLevel(){
+    const t = Math.random()*LOW_SUM;
+    for (let i=0;i<LOW_CDF.length;i++) if (t < LOW_CDF[i]) return i;
+    return 0;
+  }
+
+  // State
+  let fruits = [];
+  let nextLevel = randLowLevel();
+  let currLevel = randLowLevel();
+  let spawnX = (BASE_W)/2;
+  let canDrop = true;
+  let score = 0;
+  let gameOver = false, dangerTimer = 0;
+  let idSeq = 1;
+
+  const scoreEl = document.getElementById('score');
+  const nextEl  = document.getElementById('next');
+  const restartBtn = document.getElementById('restart');
+  const toastEl = document.getElementById('toast');
+
+  function updateNextBadge(){
+    const f = FRUITS[nextLevel];
+    nextEl.style.background = f.color;
+  }
+  updateNextBadge();
+
+  function massFromR(r){return r*r;} // area proportional mass
+
+  function makeFruit(level, x, y, vx=0, vy=0){
+    const def = FRUITS[level];
+    return {
+      id:idSeq++, level, r:def.r, color:def.color, m:massFromR(def.r),
+      x, y, vx, vy, marked:false, born:performance.now()/1000, lastMerge:0
+    };
+  }
+
+  function dropFruit(){
+    if (!canDrop || gameOver) return;
+    canDrop = false;
+    const y = TOP_LINE - 36; // spawn a bit below line
+    const f = makeFruit(currLevel, clamp(spawnX, WALL+FRUITS[currLevel].r, BASE_W-WALL-FRUITS[currLevel].r), y, 0, 0);
+    fruits.push(f);
+    currLevel = nextLevel;
+    nextLevel = randLowLevel();
+    updateNextBadge();
+    // small cooldown to 방지 더블클릭
+    setTimeout(()=>{canDrop = true;}, 140);
+  }
+
+  function clamp(v, a, b){return Math.max(a, Math.min(b, v));}
+  function dist2(a,b){const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy;}
+
+  // Input: mouse/touch moves spawnX, click/tap/space drops
+  const boardEl = canvas;
+  function localXFromEvent(e){
+    const rect = boardEl.getBoundingClientRect();
+    const clientX = (e.touches? e.touches[0].clientX : e.clientX);
+    const x = (clientX - rect.left) / rect.width * BASE_W;
+    return clamp(x, WALL+FRUITS[currLevel].r, BASE_W - WALL - FRUITS[currLevel].r);
+  }
+  boardEl.addEventListener('mousemove', (e)=>{spawnX = localXFromEvent(e)});
+  boardEl.addEventListener('touchmove', (e)=>{spawnX = localXFromEvent(e)}, {passive:true});
+  boardEl.addEventListener('mousedown', (e)=>{dropFruit()});
+  boardEl.addEventListener('touchstart', (e)=>{dropFruit()}, {passive:true});
+
+  document.getElementById('leftBtn').addEventListener('click', ()=>{spawnX = clamp(spawnX-24, WALL+FRUITS[currLevel].r, BASE_W-WALL-FRUITS[currLevel].r)});
+  document.getElementById('rightBtn').addEventListener('click', ()=>{spawnX = clamp(spawnX+24, WALL+FRUITS[currLevel].r, BASE_W-WALL-FRUITS[currLevel].r)});
+  document.getElementById('dropBtn').addEventListener('click', dropFruit);
+
+  window.addEventListener('keydown', (e)=>{
+    if (e.repeat) return;
+    if (e.key===' ' || e.key==='ArrowDown') dropFruit();
+    else if (e.key==='ArrowLeft' || e.key==='a') spawnX = clamp(spawnX-16, WALL+FRUITS[currLevel].r, BASE_W-WALL-FRUITS[currLevel].r);
+    else if (e.key==='ArrowRight' || e.key==='d') spawnX = clamp(spawnX+16, WALL+FRUITS[currLevel].r, BASE_W-WALL-FRUITS[currLevel].r);
+    else if (e.key==='r' || e.key==='R') restart();
+  });
+
+  restartBtn.addEventListener('click', restart);
+  function restart(){
+    fruits.length = 0;
+    score = 0; scoreEl.textContent = '0';
+    currLevel = randLowLevel(); nextLevel = randLowLevel(); updateNextBadge();
+    spawnX = BASE_W/2; gameOver=false; dangerTimer=0; toastEl.classList.remove('show');
+  }
+
+  // Collision helpers
+  function resolveWallAndFloor(f){
+    // side walls
+    if (f.x - f.r < WALL){ f.x = WALL + f.r; f.vx = -f.vx * (1-RESTITUTION); f.vy *= WALL_FRICTION; }
+    if (f.x + f.r > BASE_W - WALL){ f.x = BASE_W - WALL - f.r; f.vx = -f.vx * (1-RESTITUTION); f.vy *= WALL_FRICTION; }
+    // floor
+    if (f.y + f.r > FLOOR){ f.y = FLOOR - f.r; if (Math.abs(f.vy) > 40) f.vy = -f.vy * (1-RESTITUTION); else f.vy = 0; f.vx *= WALL_FRICTION; }
+    // ceiling (hard cap, avoids getting stuck above line)
+    if (f.y - f.r < 0){ f.y = f.r; f.vy = Math.abs(f.vy); }
+  }
+
+  function circleCollide(a,b){
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d2 = dx*dx + dy*dy;
+    const rsum = a.r + b.r;
+    if (d2 >= rsum*rsum) return null;
+    const d = Math.sqrt(d2) || 0.0001;
+    const nx = dx/d, ny = dy/d; // normal from a->b
+    const overlap = rsum - d;
+    // positional correction proportional to inverse mass
+    const invA = 1/a.m, invB = 1/b.m; const invSum = invA + invB;
+    const pushA = overlap * (invA / invSum), pushB = overlap * (invB / invSum);
+    a.x -= nx * pushA; a.y -= ny * pushA;
+    b.x += nx * pushB; b.y += ny * pushB;
+    // velocity impulse (1D along normal)
+    const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+    const rel = rvx*nx + rvy*ny; // approaching if rel < 0
+    if (rel < 0){
+      const e = 1 - RESTITUTION; // low bounce
+      const j = -(1+e) * rel / (invSum);
+      const impX = j * nx, impY = j * ny;
+      a.vx -= impX * invA; a.vy -= impY * invA;
+      b.vx += impX * invB; b.vy += impY * invB;
+    }
+    return {nx,ny,overlap, relSpeed:Math.abs(rel)};
+  }
+
+  function canMerge(a,b, info){
+    if (a.level !== b.level) return false;
+    if (a.level >= MAX_LEVEL) return false;
+    // 너무 이른 합체 방지
+    const now = performance.now()/1000;
+    if (now - a.born < 0.08 || now - b.born < 0.08) return false;
+    if (now - a.lastMerge < 0.08 || now - b.lastMerge < 0.08) return false;
+    // 조건 완화: 겹침은 더 작게, 속도 임계치 크게
+    const minR = Math.min(a.r,b.r);
+    const depthOK = info.overlap > minR*0.12 || (info.overlap > 2 && info.relSpeed < 180);
+    const speedOK = info.relSpeed < 900; // 이전 260 → 900 으로 상향
+    // 정지에 가까운 접촉 시 안정 합체 허용
+    const av = Math.hypot(a.vx,a.vy), bv = Math.hypot(b.vx,b.vy);
+    const restingOK = (info.overlap > 1.5) && (av + bv < 140);
+    return (depthOK && speedOK) || restingOK;
+  }
+
+  function doMerge(a,b){
+    const level = Math.min(MAX_LEVEL, a.level + 1);
+    // mass-weighted position/velocity
+    const M = a.m + b.m; const wx = (a.x*a.m + b.x*b.m)/M, wy = (a.y*a.m + b.y*b.m)/M;
+    const wvx = (a.vx*a.m + b.vx*b.m)/M, wvy = (a.vy*a.m + b.vy*b.m)/M;
+    const nf = makeFruit(level, wx, wy, wvx, wvy);
+    nf.vy -= 30; // tiny pop to avoid re-overlap
+    nf.lastMerge = performance.now()/1000;
+    // remove a, b
+    fruits = fruits.filter(f => f !== a && f !== b);
+    fruits.push(nf);
+    score += FRUITS[level].score;
+    scoreEl.textContent = String(score);
+  }
+
+  // Main loop
+  let lastT = performance.now()/1000; let acc = 0;
+  function tick(){
+    const now = performance.now()/1000; let dt = now - lastT; lastT = now;
+    // cap dt to avoid spiral after tab inactive
+    dt = Math.min(dt, 0.05);
+    acc += dt;
+    while (acc >= STEP){
+      physicsStep(STEP);
+      acc -= STEP;
+    }
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  function physicsStep(dt){
+    if (gameOver) return;
+    // integrate
+    for (const f of fruits){
+      f.vy += GRAV*dt;
+      f.vx *= FRICTION; f.vy *= FRICTION;
+      f.x += f.vx*dt; f.y += f.vy*dt;
+      resolveWallAndFloor(f);
+    }
+    // pair collisions & merge collection
+    const N = fruits.length;
+    const merges = [];
+    for (let i=0;i<N;i++){
+      const a = fruits[i];
+      for (let j=i+1;j<N;j++){
+        const b = fruits[j];
+        const info = circleCollide(a,b);
+        if (!info) continue;
+        if (!a.marked && !b.marked && canMerge(a,b,info)){
+          a.marked = b.marked = true; merges.push([a,b]);
+        }
+      }
+    }
+    // apply merges
+    if (merges.length){
+      for (const [a,b] of merges){ doMerge(a,b); }
+      for (const f of fruits) f.marked = false; // reset flags
+    }
+
+    // game over check: any fruit crossing top line for > 1.2s
+    const isCrossing = fruits.some(f => (f.y - f.r) < TOP_LINE);
+    if (isCrossing) dangerTimer += dt; else dangerTimer = Math.max(0, dangerTimer - dt*0.5);
+    if (dangerTimer > 1.2){ gameOver = true; toastEl.classList.add('show'); }
+  }
+
+  function drawBin(){
+    // side walls and floor
+    ctx.fillStyle = '#0d1524';
+    ctx.fillRect(WALL-6, TOP_LINE-6, 12, FLOOR - TOP_LINE + 12);
+    ctx.fillRect(BASE_W - WALL-6, TOP_LINE-6, 12, FLOOR - TOP_LINE + 12);
+    ctx.fillRect(WALL-6, FLOOR, BASE_W-2*(WALL-6), 18);
+
+    // top line
+    const pulse = Math.min(1, dangerTimer/1.2);
+    ctx.strokeStyle = pulse>0? `rgba(255,90,95,${0.2+0.6*pulse})` : '#ffffff22';
+    ctx.lineWidth = 4; ctx.setLineDash([8,6]);
+    ctx.beginPath(); ctx.moveTo(WALL, TOP_LINE); ctx.lineTo(BASE_W - WALL, TOP_LINE); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawFruit(f){
+    // body
+    const grd = ctx.createRadialGradient(f.x - f.r*0.4, f.y - f.r*0.4, f.r*0.2, f.x, f.y, f.r);
+    grd.addColorStop(0, '#ffffff');
+    grd.addColorStop(0.08, f.color);
+    grd.addColorStop(1, shade(f.color, -16));
+    ctx.fillStyle = grd;
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI*2); ctx.fill();
+    // outline
+    ctx.strokeStyle = '#00000033'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  function shade(hex, amt){
+    // hex like #rrggbb; amt -100..100
+    const c = hex.replace('#','');
+    const num = parseInt(c,16);
+    let r=(num>>16)&255, g=(num>>8)&255, b=num&255;
+    const f = (v)=> clamp(Math.round(v + 255*amt/100), 0, 255);
+    r=f(r); g=f(g); b=f(b);
+    return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+  }
+
+  function draw(){
+    // clear
+    ctx.clearRect(0,0,BASE_W,BASE_H);
+
+    // background vignette
+    const bg = ctx.createLinearGradient(0,0,0,BASE_H);
+    bg.addColorStop(0,'#0a101a'); bg.addColorStop(1,'#121b2b');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,BASE_W,BASE_H);
+
+    drawBin();
+
+    // spawn ghost
+    if (!gameOver){
+      const def = FRUITS[currLevel];
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath(); ctx.arc(spawnX, TOP_LINE-36, def.r, 0, Math.PI*2); ctx.fillStyle = def.color; ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // fruits
+    for (const f of fruits){ drawFruit(f); }
+
+    // game over overlay pulse
+    if (gameOver){
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(0,0,BASE_W,BASE_H);
+    }
+  }
+
+  // Kick
+  tick();
+})();
+</script>
+</body>
+</html>

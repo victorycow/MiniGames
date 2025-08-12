@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>두들 점프 클론 · Pixel + SFX</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: radial-gradient(120% 120% at 50% 20%, #0f172a 0%, #0b1022 45%, #050814 100%); font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, sans-serif; color:#e5e7eb }
+  #wrap { position: fixed; inset: 0; display: grid; place-items: center; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; box-shadow: 0 10px 40px rgba(0,0,0,.5); border-radius: 14px; background:#0b1224; }
+  .hud { position: fixed; inset: 0; pointer-events: none; }
+  .top { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .chip { background: rgba(255,255,255,.06); padding: 6px 10px; border-radius: 10px; backdrop-filter: blur(6px); border:1px solid rgba(255,255,255,.08); font-weight:600; font-size: 12px }
+  .btn { pointer-events: all; cursor: pointer; user-select: none; }
+  .center { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  .card { background: rgba(4,6,20,.7); padding: 14px 16px; border: 1px solid rgba(255,255,255,.08); border-radius: 14px; max-width: 90vw; }
+  .card h1 { margin: 0 0 10px; font-size: 16px; }
+  .kbd { display:inline-block; padding:1px 6px; border-radius:6px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.06); font-weight:700; font-size:12px }
+  .hide { display:none }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="160" height="240"></canvas>
+  <div class="hud">
+    <div class="top">
+      <div class="chip">점수 <span id="score">0</span> · 최고 <span id="hi">0</span></div>
+      <div class="chip btn" id="muteBtn" title="M 키로도 전환">🔊 소리 켜짐</div>
+    </div>
+    <div id="start" class="center">
+      <div class="card">
+        <h1>두들 점프 (도트 + 사운드)</h1>
+        <div style="opacity:.9">← → 또는 <span class="kbd">A</span>/<span class="kbd">D</span> 이동 · <span class="kbd">M</span> 음소거 · 모바일은 좌/우 화면 터치</div>
+        <div style="opacity:.7;margin-top:8px">시작하려면 클릭/탭 또는 키를 누르세요</div>
+      </div>
+    </div>
+    <div id="gameover" class="center hide">
+      <div class="card">
+        <h1>게임 오버</h1>
+        <div style="margin:.2rem 0 .6rem">점수 <span id="final">0</span></div>
+        <div class="chip btn" id="restartBtn">다시 시작 (R)</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  // ===== 기본 설정 =====
+  const W = 160, H = 240; // 내부 해상도 (도트 느낌 유지)
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  // 화면 크기에 맞춰 확대 (정수 배율 우선)
+  function fit() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const scale = Math.floor(Math.min(vw / W, vh / H));
+    const cssW = Math.max(W * Math.max(1, scale), Math.min(vw, W*3));
+    const cssH = cssW * (H / W);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  // ===== UI 엘리먼트 =====
+  const elScore = document.getElementById('score');
+  const elHi = document.getElementById('hi');
+  const startCard = document.getElementById('start');
+  const overCard = document.getElementById('gameover');
+  const elFinal = document.getElementById('final');
+  const muteBtn = document.getElementById('muteBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  // ===== 사운드 (WebAudio, 외부 파일 없음) =====
+  let AC = null; // AudioContext (사용자 상호작용 후 생성)
+  let muted = false;
+  function initAudio() {
+    if (!AC) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      AC = new Ctx();
+    }
+    if (AC.state === 'suspended') AC.resume();
+  }
+  function sfx({type='square', freq=440, dur=0.08, vol=0.2, sweep=0}) {
+    if (muted) return;
+    if (!AC) return; // 아직 시작 전
+    const t0 = AC.currentTime;
+    const osc = AC.createOscillator();
+    const gain = AC.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    if (sweep !== 0) {
+      osc.frequency.setValueAtTime(freq, t0);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq * Math.pow(2, sweep)), t0 + dur);
+    }
+    gain.gain.setValueAtTime(vol, t0);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(gain).connect(AC.destination);
+    osc.start();
+    osc.stop(t0 + dur + 0.02);
+  }
+  function blipJump(){ sfx({type:'square', freq:520, dur:0.06, vol:0.25}); }
+  function blipSpring(){ sfx({type:'sawtooth', freq:700, dur:0.18, vol:0.22, sweep:-0.7}); }
+  function blipBreak(){ sfx({type:'triangle', freq:120, dur:0.12, vol:0.2, sweep:-0.3}); }
+  function blipLose(){ sfx({type:'square', freq:200, dur:0.3, vol:0.25, sweep:-1}); }
+
+  muteBtn.addEventListener('click', () => { muted = !muted; muteBtn.textContent = (muted? '🔇 소리 꺼짐' : '🔊 소리 켜짐'); initAudio(); });
+
+  // ===== 게임 상태 =====
+  const rnd = (a,b)=> a + Math.random()*(b-a);
+  const irnd = (a,b)=> Math.floor(rnd(a,b+1));
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
+
+  let hi = Number(localStorage.getItem('dj_hi')||0);
+  elHi.textContent = hi;
+
+  const State = {
+    READY: 0, RUN: 1, OVER: 2
+  }
+  let state = State.READY;
+
+  // 플레이어(도트)
+  const P = {
+    x: W/2, y: H-40,
+    w: 12, h: 12,
+    vx: 0, vy: -380,
+  };
+
+  // 입력
+  const input = { left:false, right:false };
+  function setKey(e, down){
+    const k = e.key.toLowerCase();
+    if (k==='arrowleft' || k==='a') input.left = down;
+    if (k==='arrowright' || k==='d') input.right = down;
+    if (k==='m' && down) { muted=!muted; muteBtn.textContent = (muted? '🔇 소리 꺼짐' : '🔊 소리 켜짐'); initAudio(); }
+    if (k==='r' && down && state===State.OVER) restart();
+  }
+  window.addEventListener('keydown', e=>{ initAudio(); setKey(e,true); if (state===State.READY) start(); });
+  window.addEventListener('keyup', e=> setKey(e,false));
+
+  // 터치/마우스: 좌/우 영역 터치로 이동
+  canvas.addEventListener('pointerdown', (e) => { initAudio(); if (state===State.READY) start(); handlePointer(e, true); });
+  canvas.addEventListener('pointermove', (e) => handlePointer(e, true));
+  window.addEventListener('pointerup', () => { input.left = input.right = false; });
+  function handlePointer(e, active){
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    input.left = input.right = false;
+    if (!active) return;
+    if (x < rect.width/2) input.left = true; else input.right = true;
+  }
+
+  // 플랫폼
+  const plats = [];
+  let spawnY = H - 20; // 다음 생성될 y 기준 (아래에서 위로 채움)
+  let score = 0;
+
+  function makePlat(y){
+    const gap = clamp(26 + (score/80)|0, 26, 38); // 점수 오를수록 간격 살짝 증가
+    const w = irnd(28, 40);
+    const x = irnd(4, W - w - 4);
+    // 타입 확률: 이동(10~18%), 부서짐(6~12%), 스프링(12~18%)
+    const moveP = clamp(0.10 + score/3000, .10, .18);
+    const breakP = clamp(0.06 + score/4000, .06, .12);
+    const springP = clamp(0.12 + score/2000, .12, .18);
+    const r = Math.random();
+    let type = 'normal';
+    let dx = 0, broken=false, hasSpring=false;
+    if (r < moveP) { type='move'; dx = Math.random()<.5? -0.3:0.3; }
+    else if (r < moveP + breakP) { type='fragile'; broken=false; }
+    if (Math.random() < springP) hasSpring = true;
+    plats.push({x, y, w, h:6, type, dx, broken, hasSpring});
+    spawnY -= gap;
+  }
+
+  function seedPlats(){
+    plats.length = 0; spawnY = H-16;
+    // 바닥 근처 촘촘히
+    for(let y = H-18; y > -H*2; ){
+      makePlat(y);
+      y = spawnY;
+    }
+    // 안전 시작 플랫폼 보정
+    const startP = plats.reduce((best,p)=> p.y>best.y? p:best, plats[0]);
+    startP.x = clamp(P.x - startP.w/2, 4, W-startP.w-4);
+    startP.type='normal'; startP.hasSpring=false; startP.broken=false; startP.dx=0;
+  }
+
+  // 충돌 체크 (하강 중, 발 위에 착지)
+  function collidePlat(p){
+    if (P.vy <= 0) return false; // 위로 이동 중엔 무시
+    const px1=P.x, px2=P.x+P.w, py2=P.y+P.h; // 플레이어 바닥
+    const qx1=p.x, qx2=p.x+p.w, qy1=p.y;     // 플랫폼 윗면
+    if (py2 <= qy1 && py2 + P.vy*dt >= qy1 && px2 > qx1 && px1 < qx2){
+      // 스프링 먼저 체크
+      if (p.hasSpring){
+        const sx1 = p.x + p.w/2 - 4, sx2=sx1+8, sy=p.y-4;
+        if (px2 > sx1 && px1 < sx2){
+          P.vy = -JUMP*1.6; blipSpring(); return true;
+        }
+      }
+      if (p.type==='fragile') { p.broken=true; blipBreak(); return false; }
+      P.vy = -JUMP; blipJump(); return true;
+    }
+    return false;
+  }
+
+  // 그리기: 도트 스타일 픽셀 드로잉
+  function px(x,y,w,h,color){ ctx.fillStyle=color; ctx.fillRect(x|0,y|0,w|0,h|0); }
+  function drawBackground(){
+    // 별/버블 같은 단순 배경 (패럴랙스 느낌)
+    ctx.clearRect(0,0,W,H);
+    for (let i=0;i<24;i++) px((i*37+tick/8)%W, (i*53 - tick/5)%H, 1,1, '#1e2a54');
+    for (let i=0;i<16;i++) px((i*53 - tick/6 + 40)%W, (i*71 + tick/7 + 20)%H, 1,1, '#16224a');
+  }
+  function drawPlayer(){
+    const x=P.x|0, y=P.y|0;
+    // 본체
+    px(x+2,y+2,8,8,'#f5f5f5'); // 몸통
+    // 테두리
+    px(x+1,y+1,10,1,'#0a0a0a'); px(x+1,y+9,10,1,'#0a0a0a');
+    px(x+1,y+2,1,7,'#0a0a0a'); px(x+10,y+2,1,7,'#0a0a0a');
+    // 눈
+    px(x+4,y+5,1,1,'#0a0a0a'); px(x+7,y+5,1,1,'#0a0a0a');
+    // 발
+    px(x+2,y+10,3,2,'#96f'); px(x+7,y+10,3,2,'#96f');
+  }
+  function drawPlat(p){
+    if (p.type==='fragile' && p.broken){
+      // 깨짐 잔해
+      px(p.x, p.y+2, p.w, 1, '#3a2d16');
+      px(p.x+2, p.y+4, p.w-4, 1, '#241b0e');
+      return;
+    }
+    const col = p.type==='move' ? '#5dd3ff' : (p.type==='fragile' ? '#c7a66a' : '#74f37a');
+    // 본체
+    px(p.x, p.y, p.w, p.h, col);
+    // 가장자리 그림자
+    px(p.x, p.y+p.h-1, p.w, 1, '#0a0a0a');
+    // 스프링
+    if (p.hasSpring){
+      const sx = p.x + (p.w>>1) - 3, sy = p.y - 5;
+      px(sx, sy, 6, 2, '#ddd');
+      px(sx, sy+2, 6, 1, '#bbb');
+      px(sx+1, sy+3, 4, 1, '#999');
+    }
+  }
+
+  // 물리/카메라
+  const JUMP = 360; // 기본 점프 속도
+  const GRAV = 980; // 중력 (px/s^2)
+  let dt = 1/60, acc=0, last=0, tick=0;
+
+  function start(){
+    state = State.RUN; startCard.classList.add('hide'); overCard.classList.add('hide');
+    initAudio(); restart();
+  }
+  function restart(){
+    score = 0; elScore.textContent = '0';
+    P.x=W/2-6; P.y=H-40; P.vx=0; P.vy=-JUMP;
+    seedPlats();
+    state = State.RUN; overCard.classList.add('hide');
+  }
+
+  function update(dt){
+    tick += dt*60;
+    // 입력 -> 속도
+    const speed = 80; // 좌우 이동 속도 (px/s)
+    P.vx = (input.right - input.left) * speed;
+    // 위치 업데이트
+    P.vy += GRAV * dt;
+    P.x += P.vx * dt;
+    P.y += P.vy * dt;
+    // 좌우 래핑
+    if (P.x < -P.w) P.x = W;
+    if (P.x > W) P.x = -P.w;
+
+    // 이동 플랫폼
+    for (const p of plats){
+      if (p.type==='move'){
+        p.x += p.dx * 60 * dt; // 프레임 보정
+        if (p.x < 2 || p.x + p.w > W-2) p.dx *= -1;
+      }
+    }
+
+    // 충돌 (착지)
+    for (const p of plats) collidePlat(p);
+
+    // 카메라: 플레이어가 화면 상단 40% 넘으면 모든 것을 아래로 스크롤
+    if (P.y < H*0.4){
+      const dy = H*0.4 - P.y;
+      P.y += dy; // 화면 내 고정
+      for (const p of plats) p.y += dy;
+      score += dy|0; elScore.textContent = score|0;
+    }
+
+    // 바닥으로 떨어지면 게임오버
+    if (P.y > H + 20){
+      state = State.OVER; blipLose();
+      elFinal.textContent = score|0; overCard.classList.remove('hide');
+      if (score > hi){ hi = score|0; localStorage.setItem('dj_hi', hi); elHi.textContent = hi; }
+    }
+
+    // 플랫폼 재생성: 아래로 사라진 건 제거, 위로 새로 생성
+    for (let i=plats.length-1; i>=0; i--){
+      if (plats[i].y > H + 12) plats.splice(i,1);
+    }
+    while (plats.length < 26){
+      makePlat(spawnY);
+    }
+  }
+
+  function render(){
+    drawBackground();
+    for (const p of plats) drawPlat(p);
+    drawPlayer();
+  }
+
+  function loop(t){
+    if (!last) last = t; let delta = (t - last)/1000; last = t; delta = Math.min(delta, 0.05);
+    acc += delta; const step = 1/60;
+    if (state === State.RUN) {
+      while (acc >= step){ update(step); acc -= step; }
+    } else {
+      acc = 0; // 정지 상태에서 적산 방지
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // 처음 클릭/키 입력으로 시작
+  startCard.addEventListener('click', ()=>{ initAudio(); start(); });
+  restartBtn.addEventListener('click', ()=> restart());
+})();
+</script>
+</body>
+</html>
