@@ -60,7 +60,7 @@
   </div>
   <div id="top-right">
     <button class="btn" id="btn-audio">🔈 Sound: Off</button>
-    <button class="btn" id="btn-autofire">⚙️ Auto-Fire: On</button>
+    <button class="btn" id="btn-autofire">⚙️ Auto-Fire: Off</button>
     <button class="btn" id="btn-pause">⏸ Pause</button>
     <button class="btn" id="btn-dev">🛠 Debug</button>
   </div>
@@ -450,7 +450,7 @@
   // Game State
   let state='menu';
   let last=performance.now();
-  let fireTimer=0; let autoFire=true;
+  let fireTimer=0; let autoFire=false;
 
   function resetGame(){
     state='playing'; wave=1; enemies.length=0; bullets.length=0; parts.length=0; drops.length=0; player.ghosts.length=0;
