@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Yacht 주사위 게임 • 단일 HTML</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html,body,#root { height: 100%; }
+    body { background:#0b1220; color:#e5e7eb; margin:0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React / ReactDOM (UMD) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel Standalone: 이 스크립트가 JSX를 브라우저에서 변환합니다 -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- 앱 코드 (JSX) -->
+  <script type="text/babel" data-presets="env,react">
+    const { useMemo, useState } = React;
+
+    const DICE_COUNT = 5;
+    const MAX_ROLLS_PER_ROUND = 3;
+
+    function randDie(){ return Math.floor(Math.random()*6)+1; }
+
+    function pipPositions(size=40){
+      const s=size, m=s/6;
+      return [
+        [m*1.4,m*1.4], [s/2,s/2], [s-m*1.4,s-m*1.4],
+        [s-m*1.4,m*1.4], [m*1.4,s-m*1.4], [m*1.4,s/2], [s-m*1.4,s/2],
+      ];
+    }
+    function drawPips(num,size=40){
+      const [tl,c,br,tr,bl,ml,mr] = pipPositions(size);
+      const dot=(p,i)=><circle key={i} cx={p[0]} cy={p[1]} r={size/12}/>;
+      switch(num){
+        case 1: return [dot(c,1)];
+        case 2: return [dot(tl,1),dot(br,2)];
+        case 3: return [dot(tl,1),dot(c,2),dot(br,3)];
+        case 4: return [dot(tl,1),dot(tr,2),dot(bl,3),dot(br,4)];
+        case 5: return [dot(tl,1),dot(tr,2),dot(c,3),dot(bl,4),dot(br,5)];
+        case 6: return [dot(tl,1),dot(tr,2),dot(ml,3),dot(mr,4),dot(bl,5),dot(br,6)];
+        default: return null;
+      }
+    }
+    function Die({ value, held, onToggle }){
+      const size=56;
+      return (
+        <button
+          className={"relative rounded-2xl shadow-md border transition-all select-none grid place-items-center "+
+            (held ? "bg-slate-900 text-slate-50 border-slate-700" : "bg-slate-100 text-slate-900 border-slate-300")
+          +" hover:scale-[1.03] active:scale-[0.99]"}
+          style={{width:size+12,height:size+12}}
+          onClick={onToggle}
+          title={held?"보류 해제":"보류"}
+        >
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-sm">
+            <rect x="1" y="1" width={size-2} height={size-2} rx="12" className="fill-white" />
+            <g className={held ? "fill-black" : "fill-slate-800"}>{drawPips(value, size)}</g>
+          </svg>
+          {held && <span className="absolute -top-2 -right-2 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow">보류</span>}
+        </button>
+      );
+    }
+    function makeEmptyDice(){ return Array.from({length:DICE_COUNT},()=>({value:0,held:false})); }
+    function rollDice(state, canRoll){
+      if(!canRoll) return state;
+      return state.map(d => d.held ? d : ({...d, value: randDie()}));
+    }
+    function counts(dice){ const c=Array(7).fill(0); dice.forEach(d=>c[d.value]++); return c; }
+    function sum(dice){ return dice.reduce((a,d)=>a+d.value,0); }
+    function sumOf(n,dice){ return dice.filter(d=>d.value===n).reduce((a,d)=>a+d.value,0); }
+    function isFullHouse(dice){ const c=counts(dice).filter(Boolean).sort((a,b)=>a-b).join(","); return c==="2,3"; }
+    function isLittleStraight(d){ const c=counts(d); return c[1]===1 && c[2]===1 && c[3]===1 && c[4]===1 && c[5]===1 && c[6]===0; }
+    function isBigStraight(d){ const c=counts(d); return c[1]===0 && c[2]===1 && c[3]===1 && c[4]===1 && c[5]===1 && c[6]===1; }
+    function isYacht(d){ return counts(d).some(x=>x===5); }
+
+    const CATEGORY_DEFS = [
+      { key:"ones", label:"Ones (1)", desc:"1의 총합", score: d=>sumOf(1,d) },
+      { key:"twos", label:"Twos (2)", desc:"2의 총합", score: d=>sumOf(2,d) },
+      { key:"threes", label:"Threes (3)", desc:"3의 총합", score: d=>sumOf(3,d) },
+      { key:"fours", label:"Fours (4)", desc:"4의 총합", score: d=>sumOf(4,d) },
+      { key:"fives", label:"Fives (5)", desc:"5의 총합", score: d=>sumOf(5,d) },
+      { key:"sixes", label:"Sixes (6)", desc:"6의 총합", score: d=>sumOf(6,d) },
+      { key:"choice", label:"Choice", desc:"주사위 합계", score: d=>sum(d) },
+      { key:"fourKind", label:"Four of a Kind", desc:"동일 눈 4개 이상 → 그 4개의 합",
+        score: d=>{ const c=counts(d); for(let f=6; f>=1; f--){ if(c[f]>=4) return f*4; } return 0; } },
+      { key:"fullHouse", label:"Full House", desc:"트리플+페어 → 합계", score: d=>isFullHouse(d)?sum(d):0 },
+      { key:"littleStraight", label:"Little Straight", desc:"1-2-3-4-5 → 30점", score: d=>isLittleStraight(d)?30:0 },
+      { key:"bigStraight", label:"Big Straight", desc:"2-3-4-5-6 → 30점", score: d=>isBigStraight(d)?30:0 },
+      { key:"yacht", label:"Yacht", desc:"같은 눈 5개 → 50점", score: d=>isYacht(d)?50:0 },
+    ];
+
+    function useLocalState(key, initial){
+      const [state, setState] = useState(()=>{
+        try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):initial; }catch{ return initial; }
+      });
+      const wrappedSet = (val)=>{
+        setState(prev=>{
+          const next=typeof val==="function"?val(prev):val;
+          try{ localStorage.setItem(key, JSON.stringify(next)); }catch{}
+          return next;
+        });
+      };
+      return [state, wrappedSet];
+    }
+
+    function App(){
+      const [dice, setDice] = useLocalState("yacht_dice", makeEmptyDice());
+      const [rolls, setRolls] = useLocalState("yacht_rolls", 0);
+      const [scores, setScores] = useLocalState("yacht_scores", Object.fromEntries(CATEGORY_DEFS.map(c=>[c.key,null])));
+
+      const canRoll = rolls < MAX_ROLLS_PER_ROUND && Object.values(scores).some(v=>v===null);
+      const allScored = Object.values(scores).every(v=>v!==null);
+      const rolledThisRound = rolls > 0;
+
+      const candidateScores = useMemo(()=>{
+        const cand={}; CATEGORY_DEFS.forEach(c=>{ cand[c.key]=c.score(dice); }); return cand;
+      },[dice]);
+
+      const bestCategoryKey = useMemo(()=>{
+        let bestKey=null, bestVal=-1;
+        CATEGORY_DEFS.forEach(c=>{
+          if(scores[c.key]===null){
+            const val=candidateScores[c.key]??0;
+            if(val>bestVal){ bestVal=val; bestKey=c.key; }
+          }
+        });
+        return bestKey;
+      },[candidateScores, scores]);
+
+      const totalScore = useMemo(()=>Object.values(scores).reduce((a,v)=>a+(typeof v==="number"?v:0),0),[scores]);
+
+      function startNewRound(){ setDice(makeEmptyDice()); setRolls(0); }
+      function handleRoll(){
+        if(!canRoll) return;
+        setDice(prev=>rollDice(prev.map(d=>d.value===0?{...d, value: randDie()}:d), true));
+        setRolls(r=>r+1);
+      }
+      function toggleHold(i){ setDice(prev=>prev.map((d,idx)=>idx===i?{...d,held:!d.held}:d)); }
+      function clearHolds(){ setDice(prev=>prev.map(d=>({...d,held:false}))); }
+      function commitScore(key){
+        if(!rolledThisRound) return;
+        if(scores[key]!==null) return;
+        const val=candidateScores[key]??0;
+        setScores(prev=>({...prev,[key]:val}));
+        setTimeout(()=>startNewRound(),150);
+      }
+      function resetGame(){
+        setScores(Object.fromEntries(CATEGORY_DEFS.map(c=>[c.key,null])));
+        startNewRound();
+      }
+
+      return (
+        <div className="min-h-screen w-full text-slate-100">
+          <div className="max-w-5xl mx-auto p-4 s
