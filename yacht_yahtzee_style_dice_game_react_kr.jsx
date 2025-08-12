@@ -275,3 +275,90 @@ function App() {
             {allScored && (
               <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-400 text-slate-900 shadow-xl">
                 <div className="flex items-center gap-2 font-bold text-lg">
+                  <span>🎉</span> 게임 종료! 최종 점수: {totalScore}
+                </div>
+                <div className="mt-2 text-sm">새 게임을 눌러 다시 시작하세요.</div>
+              </div>
+            )}
+          </div>
+
+          {/* Scoreboard */}
+          <div className="lg:col-span-2">
+            <div className="p-4 rounded-2xl bg-slate-900 ring-1 ring-slate-800 shadow-xl">
+              <h2 className="text-lg font-semibold mb-3">점수표</h2>
+              <div className="overflow-hidden rounded-xl ring-1 ring-slate-800">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-800">
+                    <tr className="text-left">
+                      <th className="px-3 py-2 w-[34%]">족보</th>
+                      <th className="px-3 py-2">설명</th>
+                      <th className="px-3 py-2 text-right">가능 점수</th>
+                      <th className="px-3 py-2 text-right">기록</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {CATEGORY_DEFS.map((c) => {
+                      const used = scores[c.key] !== null;
+                      const value = used ? scores[c.key] : candidateScores[c.key] ?? 0;
+                      const isBest = !used && c.key === bestCategoryKey && rolledThisRound;
+                      return (
+                        <tr key={c.key} className={`border-t border-slate-800 ${isBest ? "bg-emerald-500/10" : ""}`}>
+                          <td className="px-3 py-2 font-medium">{c.label}</td>
+                          <td className="px-3 py-2 text-slate-300">{c.desc}</td>
+                          <td className="px-3 py-2 text-right font-mono">
+                            {used ? <span className="text-slate-200">{value}</span> : <span className={isBest ? "text-emerald-400" : "text-slate-200"}>{value}</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {used ? (
+                              <span className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 ring-1 ring-slate-700">완료</span>
+                            ) : (
+                              <button
+                                onClick={() => commitScore(c.key)}
+                                disabled={!rolledThisRound}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold ring-1 transition ${
+                                  rolledThisRound
+                                    ? "bg-blue-500/90 hover:bg-blue-500 ring-blue-400 text-white"
+                                    : "bg-slate-800 ring-slate-700 text-slate-400 cursor-not-allowed"
+                                }`}
+                                title={rolledThisRound ? "이 족보에 점수 기록" : "먼저 주사위를 굴리세요"}
+                              >
+                                기록
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-700">
+                      <td className="px-3 py-2 font-bold">합계</td>
+                      <td></td>
+                      <td className="px-3 py-2 text-right font-bold">{totalScore}</td>
+                      <td className="px-3 py-2 text-right"></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              <div className="mt-4 text-xs text-slate-400 leading-relaxed">
+                <p className="mb-1">규칙 참고:</p>
+                <ul className="list-disc ml-5 space-y-1">
+                  <li>Four of a Kind은 같은 눈이 4개 이상일 때 그 <b>4개</b>의 합으로 계산합니다. (예: 6,6,6,6,5 → 24)</li>
+                  <li>Full House는 정확히 3개+2개 조합만 인정합니다. Yacht(같은 눈 5개)는 Full House로 취급하지 않습니다.</li>
+                  <li>Little Straight: 1-2-3-4-5 (중복 없음), Big Straight: 2-3-4-5-6 (중복 없음)</li>
+                  <li>조건이 안 맞아도 원하는 족보에 0점으로 기록할 수 있습니다(의무 기록).</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* 렌더 호출은 컴포넌트 밖, 파일 맨 아래 */
+document.addEventListener('DOMContentLoaded', () => {
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+});
