@@ -1,9 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Dice5, RefreshCw, RotateCcw, PartyPopper } from "lucide-react";
-
-// Tailwind is available in this environment.
-// Single-file React component for a Yacht (Yahtzee-style) dice game (Korean UI)
-// Rules implemented per user's description.
+/* Babel Standalone + UMD용 (import/export, lucide-react 사용 안 함) */
+const { useMemo, useState } = React;
 
 const DICE_COUNT = 5;
 const MAX_ROLLS_PER_ROUND = 3; // up to 3 total throws per round
@@ -13,10 +9,9 @@ function randDie() {
 }
 
 function pipPositions(size = 40) {
-  // 3x3 grid positions for pips on an SVG die face
   const s = size;
   const m = s / 6; // margin
-  const spots = [
+  return [
     [m * 1.4, m * 1.4], // tl
     [s / 2, s / 2], // center
     [s - m * 1.4, s - m * 1.4], // br
@@ -25,29 +20,19 @@ function pipPositions(size = 40) {
     [m * 1.4, s / 2], // ml
     [s - m * 1.4, s / 2], // mr
   ];
-  return spots;
 }
 
 function drawPips(num, size = 40) {
   const [tl, c, br, tr, bl, ml, mr] = pipPositions(size);
-  const dot = (pos, i) => (
-    <circle key={i} cx={pos[0]} cy={pos[1]} r={size / 12} />
-  );
+  const dot = (pos, i) => <circle key={i} cx={pos[0]} cy={pos[1]} r={size / 12} />;
   switch (num) {
-    case 1:
-      return [dot(c, 1)];
-    case 2:
-      return [dot(tl, 1), dot(br, 2)];
-    case 3:
-      return [dot(tl, 1), dot(c, 2), dot(br, 3)];
-    case 4:
-      return [dot(tl, 1), dot(tr, 2), dot(bl, 3), dot(br, 4)];
-    case 5:
-      return [dot(tl, 1), dot(tr, 2), dot(c, 3), dot(bl, 4), dot(br, 5)];
-    case 6:
-      return [dot(tl, 1), dot(tr, 2), dot(ml, 3), dot(mr, 4), dot(bl, 5), dot(br, 6)];
-    default:
-      return null;
+    case 1: return [dot(c, 1)];
+    case 2: return [dot(tl, 1), dot(br, 2)];
+    case 3: return [dot(tl, 1), dot(c, 2), dot(br, 3)];
+    case 4: return [dot(tl, 1), dot(tr, 2), dot(bl, 3), dot(br, 4)];
+    case 5: return [dot(tl, 1), dot(tr, 2), dot(c, 3), dot(bl, 4), dot(br, 5)];
+    case 6: return [dot(tl, 1), dot(tr, 2), dot(ml, 3), dot(mr, 4), dot(bl, 5), dot(br, 6)];
+    default: return null;
   }
 }
 
@@ -105,7 +90,6 @@ function hasNOfAKind(n, dice) {
 
 function isFullHouse(dice) {
   const c = counts(dice).filter(Boolean); // remove zeros
-  // exactly one triple and one pair (not 5 of a kind)
   return c.sort((a, b) => a - b).join(",") === "2,3";
 }
 
@@ -138,34 +122,18 @@ const CATEGORY_DEFS = [
     score: (d) => {
       const c = counts(d);
       for (let face = 6; face >= 1; face--) {
-        if (c[face] >= 4) return face * 4; // only the four identical dice
+        if (c[face] >= 4) return face * 4;
       }
       return 0;
     },
   },
-  {
-    key: "fullHouse",
-    label: "Full House",
-    desc: "트리플+페어 → 합계",
-    score: (d) => (isFullHouse(d) ? sum(d) : 0),
-  },
-  {
-    key: "littleStraight",
-    label: "Little Straight",
-    desc: "1-2-3-4-5 → 30점",
-    score: (d) => (isLittleStraight(d) ? 30 : 0),
-  },
-  {
-    key: "bigStraight",
-    label: "Big Straight",
-    desc: "2-3-4-5-6 → 30점",
-    score: (d) => (isBigStraight(d) ? 30 : 0),
-  },
+  { key: "fullHouse", label: "Full House", desc: "트리플+페어 → 합계", score: (d) => (isFullHouse(d) ? sum(d) : 0) },
+  { key: "littleStraight", label: "Little Straight", desc: "1-2-3-4-5 → 30점", score: (d) => (isLittleStraight(d) ? 30 : 0) },
+  { key: "bigStraight", label: "Big Straight", desc: "2-3-4-5-6 → 30점", score: (d) => (isBigStraight(d) ? 30 : 0) },
   { key: "yacht", label: "Yacht", desc: "같은 눈 5개 → 50점", score: (d) => (isYacht(d) ? 50 : 0) },
 ];
 
 function useLocalState(key, initial) {
-  // Simple localStorage-backed state, for convenience between refreshes
   const [state, setState] = useState(() => {
     try {
       const raw = localStorage.getItem(key);
@@ -177,16 +145,14 @@ function useLocalState(key, initial) {
   const wrappedSet = (val) => {
     setState((prev) => {
       const next = typeof val === "function" ? val(prev) : val;
-      try {
-        localStorage.setItem(key, JSON.stringify(next));
-      } catch {}
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
       return next;
     });
   };
   return [state, wrappedSet];
 }
 
-export default function YachtGame() {
+function App() {
   const [dice, setDice] = useLocalState("yacht_dice", makeEmptyDice());
   const [rolls, setRolls] = useLocalState("yacht_rolls", 0);
   const [scores, setScores] = useLocalState(
@@ -199,25 +165,17 @@ export default function YachtGame() {
   const rolledThisRound = rolls > 0;
 
   const candidateScores = useMemo(() => {
-    // Compute potential score for each category based on current dice
-    const actualDice = dice.every((d) => d.value > 0) ? dice : dice.map((d) => ({ ...d, value: 0 }));
     const cand = {};
-    CATEGORY_DEFS.forEach((c) => {
-      cand[c.key] = c.score(dice);
-    });
+    CATEGORY_DEFS.forEach((c) => { cand[c.key] = c.score(dice); });
     return cand;
   }, [dice]);
 
   const bestCategoryKey = useMemo(() => {
-    let bestKey = null;
-    let bestVal = -1;
+    let bestKey = null, bestVal = -1;
     CATEGORY_DEFS.forEach((c) => {
       if (scores[c.key] === null) {
         const val = candidateScores[c.key] ?? 0;
-        if (val > bestVal) {
-          bestVal = val;
-          bestKey = c.key;
-        }
+        if (val > bestVal) { bestVal = val; bestKey = c.key; }
       }
     });
     return bestKey;
@@ -247,14 +205,11 @@ export default function YachtGame() {
   }
 
   function commitScore(key) {
-    if (!rolledThisRound) return; // must roll at least once before scoring
-    if (scores[key] !== null) return; // already used
-    const val = candidateScores[key] ?? 0; // zero allowed (strike)
+    if (!rolledThisRound) return;
+    if (scores[key] !== null) return;
+    const val = candidateScores[key] ?? 0; // zero allowed
     setScores((prev) => ({ ...prev, [key]: val }));
-    // prepare next round
-    setTimeout(() => {
-      startNewRound();
-    }, 150);
+    setTimeout(() => { startNewRound(); }, 150);
   }
 
   function resetGame() {
@@ -267,7 +222,7 @@ export default function YachtGame() {
       <div className="max-w-5xl mx-auto p-4 sm:p-6">
         <header className="flex items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-900 ring-1 ring-slate-800"><Dice5 className="w-6 h-6" /></div>
+            <div className="p-2 rounded-xl bg-slate-900 ring-1 ring-slate-800"><span className="text-xl">🎲</span></div>
             <h1 className="text-2xl sm:text-3xl font-bold">Yacht 주사위 게임</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -275,7 +230,7 @@ export default function YachtGame() {
               onClick={resetGame}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] ring-1 ring-slate-700"
             >
-              <RotateCcw className="w-4 h-4" /> 새 게임
+              <span>↺</span> 새 게임
             </button>
           </div>
         </header>
@@ -303,7 +258,7 @@ export default function YachtGame() {
                       : "bg-slate-800 ring-slate-700 text-slate-400 cursor-not-allowed"
                   }`}
                 >
-                  <RefreshCw className="w-4 h-4" /> 굴리기
+                  <span>🔄</span> 굴리기
                 </button>
                 <button
                   onClick={clearHolds}
@@ -313,93 +268,10 @@ export default function YachtGame() {
                 </button>
               </div>
               <p className="mt-3 text-xs text-slate-400 leading-relaxed">
-                원하는 주사위를 보류(클릭)하고 나머지만 다시 굴리세요. 라운드당 최대 2번까지 다시 던질 수 있어 한 라운드에 총 3번 굴릴 수 있습니다. 굴린 뒤에는 점수표에서 *아직 비어 있는* 한 족보를 선택해 점수를 기록해야 합니다. 조건을 만족하지 않으면 0점을 기록합니다.
+                원하는 주사위를 보류(클릭)하고 나머지만 다시 굴리세요. 라운드당 최대 2번까지 다시 던질 수 있어 한 라운드에 총 3번 굴릴 수 있습니다. 굴린 뒤에는 점수표에서 <i>아직 비어 있는</i> 한 족보를 선택해 점수를 기록해야 합니다. 조건을 만족하지 않으면 0점을 기록합니다.
               </p>
             </div>
 
             {allScored && (
               <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-400 text-slate-900 shadow-xl">
                 <div className="flex items-center gap-2 font-bold text-lg">
-                  <PartyPopper className="w-5 h-5" /> 게임 종료! 최종 점수: {totalScore}
-                </div>
-                <div className="mt-2 text-sm">새 게임을 눌러 다시 시작하세요.</div>
-              </div>
-            )}
-          </div>
-
-          {/* Scoreboard */}
-          <div className="lg:col-span-2">
-            <div className="p-4 rounded-2xl bg-slate-900 ring-1 ring-slate-800 shadow-xl">
-              <h2 className="text-lg font-semibold mb-3">점수표</h2>
-              <div className="overflow-hidden rounded-xl ring-1 ring-slate-800">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-850">
-                    <tr className="text-left">
-                      <th className="px-3 py-2 w-[34%]">족보</th>
-                      <th className="px-3 py-2">설명</th>
-                      <th className="px-3 py-2 text-right">가능 점수</th>
-                      <th className="px-3 py-2 text-right">기록</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {CATEGORY_DEFS.map((c) => {
-                      const used = scores[c.key] !== null;
-                      const value = used ? scores[c.key] : candidateScores[c.key] ?? 0;
-                      const isBest = !used && c.key === bestCategoryKey && rolledThisRound;
-                      return (
-                        <tr key={c.key} className={`border-t border-slate-800 ${isBest ? "bg-emerald-500/10" : ""}`}>
-                          <td className="px-3 py-2 font-medium">{c.label}</td>
-                          <td className="px-3 py-2 text-slate-300">{c.desc}</td>
-                          <td className="px-3 py-2 text-right font-mono">
-                            {used ? <span className="text-slate-200">{value}</span> : <span className={isBest ? "text-emerald-400" : "text-slate-200"}>{value}</span>}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {used ? (
-                              <span className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 ring-1 ring-slate-700">완료</span>
-                            ) : (
-                              <button
-                                onClick={() => commitScore(c.key)}
-                                disabled={!rolledThisRound}
-                                className={`px-3 py-1 rounded-lg text-xs font-semibold ring-1 transition ${
-                                  rolledThisRound
-                                    ? "bg-blue-500/90 hover:bg-blue-500 ring-blue-400 text-white"
-                                    : "bg-slate-800 ring-slate-700 text-slate-400 cursor-not-allowed"
-                                }`}
-                                title={rolledThisRound ? "이 족보에 점수 기록" : "먼저 주사위를 굴리세요"}
-                              >
-                                기록
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-slate-700">
-                      <td className="px-3 py-2 font-bold">합계</td>
-                      <td></td>
-                      <td className="px-3 py-2 text-right font-bold">{totalScore}</td>
-                      <td className="px-3 py-2 text-right"></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-
-              <div className="mt-4 text-xs text-slate-400 leading-relaxed">
-                <p className="mb-1">규칙 참고:</p>
-                <ul className="list-disc ml-5 space-y-1">
-                  <li>Four of a Kind은 같은 눈이 4개 이상일 때 그 <b>4개</b>의 합으로 계산합니다. (예: 6,6,6,6,5 → 24)</li>
-                  <li>Full House는 정확히 3개+2개 조합만 인정합니다. Yacht(같은 눈 5개)는 Full House로 취급하지 않습니다.</li>
-                  <li>Little Straight: 1-2-3-4-5 (중복 없음), Big Straight: 2-3-4-5-6 (중복 없음)</li>
-                  <li>조건이 안 맞아도 원하는 족보에 0점으로 기록할 수 있습니다(의무 기록).</li>
-                  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-                </ul>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </div>
-  );
-}
