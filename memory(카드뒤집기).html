@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <title>Memory — 카드 뒤집기 (HTML)</title>
+  <style>
+    :root{
+      --bg:#0b0f19; --fg:#e5e7eb; --muted:#9aa3b2; --ring:rgba(255,255,255,.1);
+      --indigo: #6366f1; --fuchsia:#d946ef; --ok:#22c55e;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif;-webkit-font-smoothing:antialiased}
+
+    /* 레이아웃 */
+    .wrap{height:100%;max-width:1100px;margin:0 auto;padding:8px 12px;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:8px}
+    header{display:flex;gap:8px;align-items:end;justify-content:space-between}
+    .h-title{font-size:20px;font-weight:800;letter-spacing:-.02em}
+    .h-sub{color:#a1a1aa;font-size:12px}
+    .btn{height:36px;padding:0 12px;border-radius:14px;border:1px solid var(--ring);background:rgba(255,255,255,.06);color:var(--fg);cursor:pointer}
+    .btn:hover{background:rgba(255,255,255,.09)}
+    .seg{display:inline-flex;gap:4px;padding:4px;border-radius:16px;border:1px solid var(--ring);background:rgba(255,255,255,.06)}
+    .seg button{height:28px;padding:0 10px;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--fg);cursor:pointer;font-size:12px}
+    .seg button.active{background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.35)}
+
+    .chips{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    @media (min-width:640px){.chips{grid-template-columns:repeat(4,1fr)}}
+    @media (min-width:980px){.chips{grid-template-columns:repeat(6,1fr)}}
+    .chip{border:1px solid var(--ring);background:rgba(255,255,255,.04);border-radius:16px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center}
+    .chip .k{color:#a1a1aa;font-size:11px}
+    .chip .v{font-weight:700}
+    .chip.ok{border-color:rgba(34,197,94,.25);background:rgba(34,197,94,.1)}
+
+    /* 보드 영역 */
+    .board-area{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .scaled-outer{ /* 스케일된 실제 레이아웃 크기 (JS에서 width/height 지정) */ }
+    .scaled-inner{transform-origin:top left;will-change:transform}
+
+    /* 보드 그리드 (픽셀 고정) */
+    .grid{display:grid;gap:12px}
+
+    /* 카드 */
+    .card{position:relative;width:120px;height:160px;border-radius:16px;perspective:1000px;border:none;background:transparent;padding:0;cursor:pointer}
+    .card[disabled]{cursor:default}
+    .card3d{position:absolute;inset:0;border-radius:16px;transform-style:preserve-3d;transition:transform .35s ease-in-out}
+    .card.face .card3d{transform:rotateY(180deg)}
+    .front,.back{position:absolute;inset:0;border-radius:16px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden}
+    .front{border:1px solid var(--ring);background:rgba(255,255,255,.08);font-size:40px}
+    .back{border:1px solid rgba(99,102,241,.35);background:linear-gradient(135deg, rgba(99,102,241,.25), rgba(217,70,239,.25));transform:rotateY(180deg);font-size:48px}
+
+    footer{color:#9ca3af;font-size:11px;text-align:center}
+
+    /* 승리 모달 */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center}
+    .modal>div{width:min(92vw,480px);border-radius:20px;border:1px solid var(--ring);background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.05));padding:20px;text-align:center}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <div class="h-title">Memory — 카드 뒤집기</div>
+        <div class="h-sub">같은 그림 이모지를 맞춰 보세요. 난이도별 최고 기록은 자동 저장됩니다.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        <div class="seg" id="diffSeg">
+          <button data-diff="easy" class="active">쉬움 (4×4)</button>
+          <button data-diff="normal">보통 (6×4)</button>
+          <button data-diff="hard">어려움 (6×6)</button>
+        </div>
+        <button class="btn" id="btnRestart">다시 시작</button>
+        <button class="btn" id="btnSound" aria-pressed="false">🔊</button>
+      </div>
+    </header>
+
+    <div class="chips">
+      <div class="chip"><span class="k">난이도</span><span class="v" id="chipDiff">쉬움 (4×4)</span></div>
+      <div class="chip"><span class="k">시간</span><span class="v" id="chipTime">00:00</span></div>
+      <div class="chip"><span class="k">이동</span><span class="v" id="chipMoves">0회</span></div>
+      <div class="chip ok"><span class="k">최고 기록</span><span class="v" id="chipBest">—</span></div>
+    </div>
+
+    <div class="board-area" id="boardArea">
+      <div class="scaled-outer" id="scaledOuter">
+        <div class="scaled-inner">
+          <div class="grid" id="board" role="grid" aria-label="memory-board"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer>스크롤 없이 전체가 보이도록 자동 축소·확대됩니다.</footer>
+  </div>
+
+  <div class="modal hidden" id="winModal" aria-modal="true" role="dialog">
+    <div>
+      <div style="font-size:28px">🎉 클리어!</div>
+      <div style="margin-top:6px;color:#d1d5db">기록: <b id="winTime">00:00</b> · <b id="winMoves">0회</b></div>
+      <div style="margin-top:16px"><button class="btn" id="btnModalRestart">다시 하기</button></div>
+    </div>
+  </div>
+
+<script>
+(()=>{
+  // ===== 데이터 & 상수 =====
+  const EMOJI_SETS = {
+    easy: ["🍎","🍊","🍋","🍉","🍇","🍓","🍒","🍍","🥝","🍌","🍑","🥕","🌽","🥦","🧀","🥨"],
+    normal: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐣","🦄","🐙","🐳","🦉","🦕","🦥","🦔","🦜"],
+    hard: ["⚽️","🏀","🏈","⚾️","🎾","🏐","🏉","🥏","🎱","🏓","🏸","🥊","🥋","🥌","⛳️","🏹","🛼","🛷","⛸️","🤿","🧗","🚴","🏄","🏊","🧘","🤺","🤾","🤽","⛷️","🏂","🏇","🎿"],
+  };
+  const GRID = { easy:{cols:4,rows:4}, normal:{cols:6,rows:4}, hard:{cols:6,rows:6} };
+  const DIFF_KEYS = Object.freeze(["easy","normal","hard"]);
+  const BASE = { W:120, H:160, GAP:12 };
+
+  // ===== 안전한 난이도 보정 =====
+  function normalizeDifficulty(d){
+    d = (d==null?"":String(d)).toLowerCase().trim();
+    return DIFF_KEYS.includes(d) ? d : "easy";
+  }
+  function gridOf(d){ return GRID[normalizeDifficulty(d)] || GRID.easy; }
+  function emojiSetOf(d){ return EMOJI_SETS[normalizeDifficulty(d)] || EMOJI_SETS.easy; }
+
+  // ===== 상태 =====
+  let difficulty = normalizeDifficulty(localStorage.getItem('memory.diff'));
+  let deck = [];
+  let firstPick = null, secondPick = null, busy = false, started = false;
+  let moves = 0, seconds = 0, timer = null;
+  let muted = JSON.parse(localStorage.getItem('memory.muted')||'false');
+  let best = JSON.parse(localStorage.getItem('memory.best')||'null');
+
+  // ===== DOM =====
+  const boardEl = document.getElementById('board');
+  const boardArea = document.getElementById('boardArea');
+  const scaledOuter = document.getElementById('scaledOuter');
+  const scaledInner = scaledOuter.querySelector('.scaled-inner');
+  const chipDiff = document.getElementById('chipDiff');
+  const chipTime = document.getElementById('chipTime');
+  const chipMoves = document.getElementById('chipMoves');
+  const chipBest  = document.getElementById('chipBest');
+  const winModal = document.getElementById('winModal');
+  const winTime = document.getElementById('winTime');
+  const winMoves = document.getElementById('winMoves');
+  const btnModalRestart = document.getElementById('btnModalRestart');
+  const diffSeg = document.getElementById('diffSeg');
+  const btnRestart = document.getElementById('btnRestart');
+  const btnSound = document.getElementById('btnSound');
+
+  // 초기 UI 상태
+  updateDiffUI();
+  btnSound.setAttribute('aria-pressed', String(!muted));
+  btnSound.textContent = muted ? '🔇' : '🔊';
+
+  // ===== 유틸 =====
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a }
+  function formatTime(t){ const m=String(Math.floor(t/60)).padStart(2,'0'); const s=String(t%60).padStart(2,'0'); return `${m}:${s}` }
+
+  // ===== 사운드 =====
+  let audioCtx = null;
+  function ctx(){ return audioCtx || (audioCtx = new (window.AudioContext||window.webkitAudioContext)()) }
+  function beep(freq, dur=0.08){ if(muted) return; const c=ctx(); const o=c.createOscillator(); const g=c.createGain(); o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(c.destination); const t=c.currentTime; g.gain.setValueAtTime(0.001,t); g.gain.exponentialRampToValueAtTime(0.2,t+0.01); g.gain.exponentialRampToValueAtTime(0.001,t+dur); o.start(); o.stop(t+dur+0.02) }
+  const sFlip = ()=>beep(660,0.06); const sMatch=()=>beep(880,0.1); const sMiss =()=>beep(220,0.09);
+  function sWin(){ if(muted) return; beep(523,0.09); setTimeout(()=>beep(659,0.09),100); setTimeout(()=>beep(784,0.12),220) }
+
+  // ===== 보드 스케일 =====
+  function applyScale(){
+    const {cols,rows} = gridOf(difficulty);
+    const naturalW = cols*BASE.W + (cols-1)*BASE.GAP;
+    const naturalH = rows*BASE.H + (rows-1)*BASE.GAP;
+    const pad = 8;
+    const availW = boardArea.clientWidth - pad*2;
+    const availH = boardArea.clientHeight - pad*2;
+    const scale = Math.max(0.2, Math.min(3, Math.min(availW/naturalW, availH/naturalH)));
+    scaledOuter.style.width = Math.round(naturalW*scale) + 'px';
+    scaledOuter.style.height = Math.round(naturalH*scale) + 'px';
+    scaledInner.style.transform = `translateZ(0) scale(${scale})`;
+    // 그리드 픽셀 크기 지정
+    boardEl.style.gridTemplateColumns = `repeat(${cols}, ${BASE.W}px)`;
+    boardEl.style.gridTemplateRows = `repeat(${rows}, ${BASE.H}px)`;
+    boardEl.style.gap = BASE.GAP + 'px';
+  }
+
+  // ResizeObserver로 반응
+  const ro = new ResizeObserver(applyScale); ro.observe(boardArea);
+  window.addEventListener('orientationchange', ()=>setTimeout(applyScale, 300));
+
+  // ===== 덱 생성 및 렌더 =====
+  function makeDeck(){
+    const {cols,rows} = gridOf(difficulty);
+    const pairs = (cols*rows)/2;
+    const pool = emojiSetOf(difficulty).slice(0,pairs);
+    let id=0; const base=[];
+    pool.forEach((sym, pairId)=>{ base.push({id:id++,pairId,symbol:sym,flipped:false,matched:false}); base.push({id:id++,pairId,symbol:sym,flipped:false,matched:false}); });
+    return shuffle(base);
+  }
+
+  function renderBoard(){
+    boardEl.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for(const card of deck){
+      const btn = document.createElement('button');
+      btn.className = 'card'; btn.type='button'; btn.dataset.id = String(card.id);
+      btn.innerHTML = `\n        <div class="card3d">\n          <div class="front">❓</div>\n          <div class="back"><span aria-hidden="true">${card.symbol}</span></div>\n        </div>`;
+      btn.addEventListener('click', ()=>onCardClick(card.id));
+      frag.appendChild(btn);
+    }
+    boardEl.appendChild(frag);
+    applyScale();
+  }
+
+  function setFace(id, face){
+    const el = boardEl.querySelector(`.card[data-id="${id}"]`);
+    if(!el) return;
+    if(face) el.classList.add('face'); else el.classList.remove('face');
+  }
+  function setDisabled(id, dis){
+    const el = boardEl.querySelector(`.card[data-id="${id}"]`);
+    if(!el) return; el.disabled = dis;
+  }
+
+  // ===== 게임 로직 =====
+  function reset(newDiff){
+    if(newDiff){ difficulty = normalizeDifficulty(newDiff); localStorage.setItem('memory.diff', difficulty); updateDiffUI(); }
+    firstPick = null; secondPick=null; busy=false; started=false;
+    moves=0; seconds=0; if(timer){ clearInterval(timer); timer=null; }
+    deck = makeDeck();
+    renderBoard();
+    updateChips();
+    hideWin();
+  }
+
+  function onCardClick(id){
+    if(busy) return;
+    const card = deck.find(c=>c.id===id);
+    if(!card || card.flipped || card.matched) return;
+    card.flipped = true; setFace(id,true); sFlip();
+    if(!started){ started=true; timer = setInterval(()=>{seconds++; chipTime.textContent = formatTime(seconds)},1000); }
+
+    if(!firstPick){ firstPick = card; return; }
+    if(!secondPick){
+      secondPick = card; moves++; chipMoves.textContent = moves+'회'; busy=true;
+      setTimeout(()=>{
+        const a=firstPick, b=secondPick; firstPick=null; secondPick=null;
+        if(a.pairId===b.pairId){
+          a.matched=b.matched=true; setDisabled(a.id,true); setDisabled(b.id,true); sMatch();
+          if(deck.every(c=>c.matched)) onWin();
+        }else{
+          a.flipped=b.flipped=false; setFace(a.id,false); setFace(b.id,false); sMiss();
+        }
+        busy=false;
+      }, 600);
+    }
+  }
+
+  function onWin(){
+    if(timer){ clearInterval(timer); timer=null; }
+    sWin();
+    const key = difficulty; const current = best && best[key];
+    if(!current || seconds < current.time || (seconds===current.time && moves < current.moves)){
+      best = {...(best||{}), [key]: {time:seconds, moves}};
+      localStorage.setItem('memory.best', JSON.stringify(best));
+    }
+    showWin(); updateChips(); started=false;
+  }
+
+  function showWin(){
+    winTime.textContent = formatTime(seconds); winMoves.textContent = moves+'회';
+    winModal.classList.remove('hidden');
+  }
+  function hideWin(){ winModal.classList.add('hidden'); }
+
+  function updateChips(){
+    chipDiff.textContent = labelOf(difficulty);
+    chipTime.textContent = formatTime(seconds);
+    chipMoves.textContent = moves+'회';
+    const rec = best && best[difficulty];
+    chipBest.textContent = rec ? `${formatTime(rec.time)} · ${rec.moves}회` : '—';
+  }
+
+  function labelOf(d){
+    const nd = normalizeDifficulty(d);
+    return nd==='easy'?'쉬움 (4×4)': nd==='normal'?'보통 (6×4)':'어려움 (6×6)';
+  }
+  function updateDiffUI(){
+    const nd = normalizeDifficulty(difficulty);
+    diffSeg.querySelectorAll('button').forEach(b=>{
+      const on = b.dataset.diff===nd; b.classList.toggle('active',on);
+    });
+  }
+
+  // ===== 이벤트 =====
+  diffSeg.addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-diff]'); if(!b) return;
+    const d = b.dataset.diff; if(d && d!==difficulty) reset(d);
+  });
+  btnRestart.addEventListener('click', ()=>reset());
+  btnSound.addEventListener('click', ()=>{ muted=!muted; localStorage.setItem('memory.muted', JSON.stringify(muted)); btnSound.textContent = muted?'🔇':'🔊';});
+  btnModalRestart.addEventListener('click', ()=>{ hideWin(); reset(); });
+  winModal.addEventListener('click', (e)=>{ if(e.target===winModal) hideWin(); });
+
+  // ===== 간단 테스트 (콘솔) =====
+  function assert(name, cond){ if(!cond){ console.error('❌', name); } else { console.log('✅', name); } }
+  (function runTests(){
+    // normalizeDifficulty
+    assert('normalizeDifficulty(undefined) → easy', normalizeDifficulty(undefined)==='easy');
+    assert('normalizeDifficulty(" HARD ") → hard', normalizeDifficulty(' HARD ')==='hard');
+    assert('normalizeDifficulty("weird") → easy', normalizeDifficulty('weird')==='easy');
+    // gridOf/emojiSetOf 동작
+    assert('gridOf("hard").cols===6', gridOf('hard').cols===6);
+    assert('gridOf("???") fallback to easy(4x4)', gridOf('???').cols===4 && gridOf('???').rows===4);
+    // makeDeck이 예외 없이 동작
+    const bak = difficulty; difficulty='???';
+    try{ const d = makeDeck(); assert('makeDeck() with invalid diff does not throw', Array.isArray(d)); }
+    catch(e){ assert('makeDeck() with invalid diff does not throw', false); }
+    finally{ difficulty=bak; }
+  })();
+
+  // 시작
+  reset();
+})();
+</script>
+</body>
+</html>
