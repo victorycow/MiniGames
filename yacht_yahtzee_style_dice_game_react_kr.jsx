@@ -393,6 +393,7 @@ export default function YachtGame() {
                   <li>Full House는 정확히 3개+2개 조합만 인정합니다. Yacht(같은 눈 5개)는 Full House로 취급하지 않습니다.</li>
                   <li>Little Straight: 1-2-3-4-5 (중복 없음), Big Straight: 2-3-4-5-6 (중복 없음)</li>
                   <li>조건이 안 맞아도 원하는 족보에 0점으로 기록할 수 있습니다(의무 기록).</li>
+                  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
                 </ul>
               </div>
             </div>
