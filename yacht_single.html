@@ -17,7 +17,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-  <!-- Babel Standalone: 이 스크립트가 JSX를 브라우저에서 변환합니다 -->
+  <!-- Babel Standalone (브라우저에서 JSX 변환) -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- 앱 코드 (JSX) -->
@@ -159,4 +159,131 @@
 
       return (
         <div className="min-h-screen w-full text-slate-100">
-          <div className="max-w-5xl mx-auto p-4 s
+          <div className="max-w-5xl mx-auto p-4 sm:p-6">
+            <header className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-slate-900 ring-1 ring-slate-800">🎲</div>
+                <h1 className="text-2xl sm:text-3xl font-bold">Yacht 주사위 게임</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={resetGame} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-[0.99] ring-1 ring-slate-700">
+                  ↺ 새 게임
+                </button>
+              </div>
+            </header>
+
+            <section className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                <div className="p-4 rounded-2xl bg-slate-900 ring-1 ring-slate-800 shadow-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm text-slate-300">라운드 굴리기: <b>{rolls}</b>/<b>{MAX_ROLLS_PER_ROUND}</b></div>
+                    <div className="text-sm text-slate-300">총점: <b className="text-white">{totalScore}</b></div>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2 place-items-center">
+                    {dice.map((d,i)=>(
+                      <Die key={i} value={d.value||1} held={d.held} onToggle={()=>toggleHold(i)} />
+                    ))}
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleRoll}
+                      disabled={!canRoll}
+                      className={"inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold ring-1 transition "+
+                        (canRoll ? "bg-emerald-500/90 hover:bg-emerald-500 ring-emerald-400 text-white" : "bg-slate-800 ring-slate-700 text-slate-400 cursor-not-allowed")}
+                    >
+                      🔄 굴리기
+                    </button>
+                    <button onClick={clearHolds} className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl ring-1 ring-slate-700 bg-slate-800 hover:bg-slate-700">
+                      보류 해제
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-400 leading-relaxed">
+                    원하는 주사위를 보류(클릭)하고 나머지만 다시 굴리세요. 라운드당 최대 2번까지 다시 던질 수 있어 한 라운드에 총 3번 굴릴 수 있습니다. 굴린 뒤에는 점수표에서 <i>아직 비어 있는</i> 한 족보를 선택해 점수를 기록해야 합니다. 조건을 만족하지 않으면 0점을 기록합니다.
+                  </p>
+                </div>
+
+                {allScored && (
+                  <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-400 text-slate-900 shadow-xl">
+                    <div className="flex items-center gap-2 font-bold text-lg">🎉 게임 종료! 최종 점수: {totalScore}</div>
+                    <div className="mt-2 text-sm">새 게임을 눌러 다시 시작하세요.</div>
+                  </div>
+                )}
+              </div>
+
+              <div className="lg:col-span-2">
+                <div className="p-4 rounded-2xl bg-slate-900 ring-1 ring-slate-800 shadow-xl">
+                  <h2 className="text-lg font-semibold mb-3">점수표</h2>
+                  <div className="overflow-hidden rounded-xl ring-1 ring-slate-800">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-800">
+                        <tr className="text-left">
+                          <th className="px-3 py-2 w-[34%]">족보</th>
+                          <th className="px-3 py-2">설명</th>
+                          <th className="px-3 py-2 text-right">가능 점수</th>
+                          <th className="px-3 py-2 text-right">기록</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {CATEGORY_DEFS.map((c)=>{
+                          const used = scores[c.key] !== null;
+                          const value = used ? scores[c.key] : (candidateScores[c.key] ?? 0);
+                          const isBest = !used && c.key===bestCategoryKey && rolledThisRound;
+                          return (
+                            <tr key={c.key} className={"border-t border-slate-800 "+(isBest?"bg-emerald-500/10":"")}>
+                              <td className="px-3 py-2 font-medium">{c.label}</td>
+                              <td className="px-3 py-2 text-slate-300">{c.desc}</td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {used ? <span className="text-slate-200">{value}</span> : <span className={isBest?"text-emerald-400":"text-slate-200"}>{value}</span>}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {used ? (
+                                  <span className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-400 ring-1 ring-slate-700">완료</span>
+                                ) : (
+                                  <button
+                                    onClick={()=>commitScore(c.key)}
+                                    disabled={!rolledThisRound}
+                                    className={"px-3 py-1 rounded-lg text-xs font-semibold ring-1 transition "+
+                                      (rolledThisRound ? "bg-blue-500/90 hover:bg-blue-500 ring-blue-400 text-white" : "bg-slate-800 ring-slate-700 text-slate-400 cursor-not-allowed")}
+                                    title={rolledThisRound ? "이 족보에 점수 기록" : "먼저 주사위를 굴리세요"}
+                                  >
+                                    기록
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-700">
+                          <td className="px-3 py-2 font-bold">합계</td>
+                          <td></td>
+                          <td className="px-3 py-2 text-right font-bold">{totalScore}</td>
+                          <td className="px-3 py-2 text-right"></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 text-xs text-slate-400 leading-relaxed">
+                    <p className="mb-1">규칙 참고:</p>
+                    <ul className="list-disc ml-5 space-y-1">
+                      <li>Four of a Kind은 같은 눈이 4개 이상일 때 그 <b>4개</b>의 합으로 계산합니다. (예: 6,6,6,6,5 → 24)</li>
+                      <li>Full House는 정확히 3개+2개 조합만 인정합니다. Yacht(같은 눈 5개)는 Full House로 취급하지 않습니다.</li>
+                      <li>Little Straight: 1-2-3-4-5 (중복 없음), Big Straight: 2-3-4-5-6 (중복 없음)</li>
+                      <li>조건이 안 맞아도 원하는 족보에 0점으로 기록할 수 있습니다(의무 기록).</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    // 렌더 호출
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
