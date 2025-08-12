@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="ko">
+  
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
@@ -109,6 +110,8 @@
   const rnd = (a,b)=> a + Math.random()*(b-a);
   const irnd = (a,b)=> Math.floor(rnd(a,b+1));
   const clamp = (v,a,b)=> Math.max(a, Math.min(b,v));
+  // 한 번의 점프로 안전하게 이동 가능한 수평 거리(보수적)
+  const MAX_HOP_DX = 36;
 
   let hi = Number(localStorage.getItem('dj_hi')||0);
   elHi.textContent = hi;
@@ -155,20 +158,41 @@
   let score = 0;
 
   function makePlat(y){
-    const gap = clamp(26 + (score/80)|0, 26, 38); // 점수 오를수록 간격 살짝 증가
+    const prev = plats.length ? plats[plats.length - 1] : null;
+
+    // 간격: 너무 벌어지지 않도록 상한을 낮춤
+    const baseGap = 26 + ((score/120)|0);
+    const gap = clamp(baseGap, 24, 34);
+
     const w = irnd(28, 40);
-    const x = irnd(4, W - w - 4);
-    // 타입 확률: 이동(10~18%), 부서짐(6~12%), 스프링(12~18%)
-    const moveP = clamp(0.10 + score/3000, .10, .18);
-    const breakP = clamp(0.06 + score/4000, .06, .12);
+
+    // 타입 확률
+    const moveP   = clamp(0.10 + score/3000, .10, .18);
+    const breakP  = clamp(0.06 + score/4000, .06, .12);
     const springP = clamp(0.12 + score/2000, .12, .18);
+
     const r = Math.random();
     let type = 'normal';
-    let dx = 0, broken=false, hasSpring=false;
-    if (r < moveP) { type='move'; dx = Math.random()<.5? -0.3:0.3; }
-    else if (r < moveP + breakP) { type='fragile'; broken=false; }
-    if (Math.random() < springP) hasSpring = true;
-    plats.push({x, y, w, h:6, type, dx, broken, hasSpring});
+    let dx = 0, broken = false, hasSpring = false;
+
+    if (r < moveP)              { type='move';    dx = Math.random()<.5 ? -0.25 : 0.25; }
+    else if (r < moveP+breakP)  { type='fragile'; broken = false; }
+    if (Math.random() < springP){ hasSpring = true; }
+
+    // 이전 발판 중심 기준, 수평 도달 가능 범위 안에서 x 선택
+    const xMin = 4, xMax = W - w - 4;
+    let x;
+    if (prev){
+      const prevC = prev.x + prev.w/2;
+      const reach = hasSpring ? Math.floor(MAX_HOP_DX * 1.4) : MAX_HOP_DX;
+      const candMin = prevC - reach - (w/2);
+      const candMax = prevC + reach - (w/2);
+      x = clamp(irnd(candMin, candMax), xMin, xMax);
+    } else {
+      x = irnd(xMin, xMax);
+    }
+
+    plats.push({ x, y, w, h:6, type, dx, broken, hasSpring });
     spawnY -= gap;
   }
 
@@ -290,6 +314,7 @@
       const dy = H*0.4 - P.y;
       P.y += dy; // 화면 내 고정
       for (const p of plats) p.y += dy;
+      spawnY += dy; // ✅ 카메라 스크롤 시 다음 생성 Y도 같이 이동 (큰 간격 버그 수정)
       score += dy|0; elScore.textContent = score|0;
     }
 
