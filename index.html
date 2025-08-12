@@ -2,50 +2,69 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0f19" />
   <title>MiniGames</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root { --ring: rgba(255,255,255,.08); }
-    html,body { height:100%; }
+    html, body { height: 100%; }
     body {
-      background: #0b0f19;
-      color: #e5e7eb;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+      background:#0b0f19; color:#e5e7eb;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
     }
-    .card {
-      border: 1px solid var(--ring);
-      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
-    }
-    .card:hover { border-color: rgba(255,255,255,.16); }
-    .hairline { border: 1px solid var(--ring); }
-    .grad-text {
-      background: linear-gradient(90deg, #a78bfa 0%, #60a5fa 35%, #34d399 70%, #f472b6 100%);
-      -webkit-background-clip: text; background-clip: text; color: transparent;
-    }
+    /* subtle grid + soft glows */
     .bg-grid {
       background-image:
         radial-gradient(ellipse 60% 50% at 20% -10%, rgba(99,102,241,.25), rgba(99,102,241,0)),
-        radial-gradient(ellipse 50% 40% at 80% 0%, rgba(56,189,248,.25), rgba(56,189,248,0)),
+        radial-gradient(ellipse 50% 40% at 80% 0%, rgba(56,189,248,.22), rgba(56,189,248,0)),
         radial-gradient(1px 1px at 0 0, rgba(255,255,255,.06) 1px, transparent 0);
       background-size: auto, auto, 24px 24px;
       background-position: center, center, top left;
     }
+    .hairline { border: 1px solid var(--ring); }
+    .card {
+      position: relative;
+      border: 1px solid var(--ring);
+      background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+      border-radius: 16px;
+      overflow: hidden;
+      transform: translateZ(0); /* GPU hint */
+    }
+    /* interactive glow following cursor */
+    .card::after{
+      content:""; position:absolute; inset:0; pointer-events:none;
+      background: radial-gradient(600px circle at var(--mx, -999px) var(--my, -999px),
+                  rgba(99,102,241,.14), transparent 40%);
+      opacity:0; transition:opacity .18s ease;
+    }
+    .card:hover::after{ opacity:1; }
+    /* gradient text */
+    .grad-text {
+      background: linear-gradient(90deg,#a78bfa 0%,#60a5fa 35%,#34d399 70%,#f472b6 100%);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+    }
+    /* reveal on scroll */
+    [data-reveal]{
+      opacity:0; transform: translateY(12px);
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    [data-reveal].show{
+      opacity:1; transform: translateY(0);
+    }
   </style>
 </head>
 <body class="bg-grid">
-  <!-- glow blobs -->
+  <!-- top glows (behind) -->
   <div class="pointer-events-none fixed inset-0 -z-10">
     <div class="absolute -top-24 left-1/3 h-72 w-72 bg-indigo-500/25 blur-3xl rounded-full"></div>
     <div class="absolute top-20 -right-24 h-80 w-80 bg-sky-500/20 blur-3xl rounded-full"></div>
-    <div class="absolute bottom-0 left-10 h-64 w-64 bg-emerald-500/20 blur-3xl rounded-full"></div>
+    <div class="absolute bottom-0 left-10 h-64 w-64 bg-emerald-500/18 blur-3xl rounded-full"></div>
   </div>
 
   <!-- nav -->
-  <header class="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-black/40 bg-black/30">
+  <header class="sticky top-0 z-10 backdrop-blur supports-[backdrop-filter]:bg-black/35 bg-black/25">
     <div class="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
       <a href="./" class="inline-flex items-center gap-2 font-semibold tracking-tight">
         <span class="text-lg">🎮</span><span>MiniGames</span>
@@ -59,42 +78,41 @@
 
   <!-- hero -->
   <section class="mx-auto max-w-6xl px-4">
-    <div class="py-12 sm:py-16">
+    <div class="py-12 sm:py-16" data-reveal>
       <h1 class="text-3xl sm:text-5xl font-extrabold tracking-tight">
         웹에서 바로 즐기는 <span class="grad-text">MiniGames</span>
       </h1>
       <p class="mt-3 text-slate-300 max-w-2xl">
-        가볍고 빠르게 즐길 수 있는 게임 모음.
+        가볍고 빠른 HTML/Canvas/React 게임 모음. Linear 스타일의 미니멀 UI.
       </p>
-      <div class="mt-6 flex gap-3">
-        <a href="#games" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl hairline hover:bg-white/5 transition">
-          목록 보기
-        </a>
-        <a href="https://victorycow.github.io/MiniGames/flappy_bird_clone_html_5_canvas.html" target="_blank" rel="noopener"
-           class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition">
-          바로 플레이(플래피 버드)
-        </a>
-      </div>
     </div>
   </section>
 
+  <!-- divider -->
+  <div class="relative mx-auto max-w-6xl px-4" data-reveal>
+    <div class="hairline rounded-full"></div>
+    <div class="pointer-events-none absolute inset-x-0 -top-px h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"></div>
+  </div>
+
   <!-- grid -->
   <main id="games" class="mx-auto max-w-6xl px-4 pb-16">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      <!-- card: Dino -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+      <!-- Dino -->
       <a data-href="./chrome_dino_clone_single_file_html.html"
-         class="card rounded-2xl p-4 group transition hover:-translate-y-0.5">
+         class="card p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5 group"
+         data-reveal>
         <div class="flex items-start justify-between">
           <div class="text-xl">🦖 크롬 다이노</div>
           <span class="text-xs text-slate-400 hairline px-2 py-0.5 rounded-md">HTML</span>
         </div>
-        <p class="mt-2 text-sm text-slate-400">단일 HTML 버전의 클래식 러너 게임</p>
+        <p class="mt-2 text-sm text-slate-400">단일 HTML 버전의 클래식 러너</p>
         <div class="mt-4 text-xs text-slate-500 truncate">chrome_dino_clone_single_file_html.html</div>
       </a>
 
-      <!-- card: Doodle Jump -->
+      <!-- Doodle Jump -->
       <a data-href="./doodle_jump_clone_pixel_art_sound_single_html_file.html"
-         class="card rounded-2xl p-4 group transition hover:-translate-y-0.5">
+         class="card p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5 group"
+         data-reveal style="transition-delay:.04s">
         <div class="flex items-start justify-between">
           <div class="text-xl">🪩 두들 점프</div>
           <span class="text-xs text-slate-400 hairline px-2 py-0.5 rounded-md">HTML + Audio</span>
@@ -103,9 +121,10 @@
         <div class="mt-4 text-xs text-slate-500 truncate">doodle_jump_clone_pixel_art_sound_single_html_file.html</div>
       </a>
 
-      <!-- card: Flappy -->
+      <!-- Flappy -->
       <a data-href="./flappy_bird_clone_html_5_canvas.html"
-         class="card rounded-2xl p-4 group transition hover:-translate-y-0.5">
+         class="card p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5 group"
+         data-reveal style="transition-delay:.08s">
         <div class="flex items-start justify-between">
           <div class="text-xl">🐤 플래피 버드</div>
           <span class="text-xs text-slate-400 hairline px-2 py-0.5 rounded-md">Canvas</span>
@@ -114,9 +133,10 @@
         <div class="mt-4 text-xs text-slate-500 truncate">flappy_bird_clone_html_5_canvas.html</div>
       </a>
 
-      <!-- card: Suika -->
+      <!-- Suika -->
       <a data-href="./수박게임_suika_클론_단일_html_파일.html"
-         class="card rounded-2xl p-4 group transition hover:-translate-y-0.5">
+         class="card p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5 group"
+         data-reveal style="transition-delay:.12s">
         <div class="flex items-start justify-between">
           <div class="text-xl">🍉 수박게임</div>
           <span class="text-xs text-slate-400 hairline px-2 py-0.5 rounded-md">HTML</span>
@@ -125,9 +145,10 @@
         <div class="mt-4 text-xs text-slate-500 truncate">수박게임_suika_클론_단일_html_파일.html</div>
       </a>
 
-      <!-- card: Yacht -->
+      <!-- Yacht -->
       <a data-href="./yacht_single.html"
-         class="card rounded-2xl p-4 group transition hover:-translate-y-0.5">
+         class="card p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5 group"
+         data-reveal style="transition-delay:.16s">
         <div class="flex items-start justify-between">
           <div class="text-xl">🎲 요트(Yahtzee)</div>
           <span class="text-xs text-slate-400 hairline px-2 py-0.5 rounded-md">React (Babel)</span>
@@ -138,26 +159,45 @@
     </div>
   </main>
 
-  <footer class="mx-auto max-w-6xl px-4 pb-10">
+  <!-- footer / divider -->
+  <footer class="mx-auto max-w-6xl px-4 pb-10" data-reveal>
     <div class="hairline rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
       <p class="text-sm text-slate-400">배포: GitHub Pages <span class="text-slate-500">(main / root)</span></p>
-      <div class="text-sm text-slate-400">
-        캐시가 강하면 링크에 자동으로 <code class="text-slate-300">?v=20250812</code>를 붙여서 열어요.
-      </div>
+      <div class="text-sm text-slate-400">캐시가 강하면 링크에 자동으로 <code class="text-slate-300">?v=20250812</code>를 붙여서 열어요.</div>
     </div>
   </footer>
 
-  <!-- 링크에 버전 자동 부착 (캐시 버스팅) -->
+  <!-- small JS: cache-busting + cursor glow + scroll reveal -->
   <script>
+    // add version query (?v=YYYYMMDD) to data-href links
     const v = '20250812';
     document.querySelectorAll('a[data-href]').forEach(a => {
       const href = a.getAttribute('data-href');
       const url = new URL(href, location.href);
       url.searchParams.set('v', v);
-      a.href = url.pathname + url.search; // 상대경로 유지
-      a.target = '_blank';
-      a.rel = 'noopener';
+      a.href = url.pathname + url.search;
+      a.target = '_blank'; a.rel = 'noopener';
     });
+
+    // interactive glow: track pointer inside each card
+    document.querySelectorAll('.card').forEach(el => {
+      el.addEventListener('pointermove', e => {
+        const r = el.getBoundingClientRect();
+        el.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+        el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+      });
+    });
+
+    // scroll reveal
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add('show');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('[data-reveal]').forEach(el => io.observe(el));
   </script>
 </body>
 </html>
