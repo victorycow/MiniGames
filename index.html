@@ -32,6 +32,7 @@
     .meta { color:#666; font-size:12px; word-break: break-all; }
     footer { margin-top:24px; color:#666; font-size:13px; }
     .note { margin-top:6px; }
+    .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid #e1e1e1; color:#555; margin-left:6px; }
   </style>
 </head>
 <body>
@@ -41,35 +42,36 @@
   </header>
 
   <main class="grid">
-    <a class="card" href="./chrome_dino_clone_single_file_html.html" target="_blank" rel="noopener">
+    <a class="card" href="./chrome_dino_clone_single_file_html.html?v=20250812" target="_blank" rel="noopener">
       <div class="title">크롬 다이노 (단일 HTML)</div>
       <div class="meta">chrome_dino_clone_single_file_html.html</div>
     </a>
 
-    <a class="card" href="./doodle_jump_clone_pixel_art_sound_single_html_file.html" target="_blank" rel="noopener">
+    <a class="card" href="./doodle_jump_clone_pixel_art_sound_single_html_file.html?v=20250812" target="_blank" rel="noopener">
       <div class="title">두들 점프 (픽셀/사운드)</div>
       <div class="meta">doodle_jump_clone_pixel_art_sound_single_html_file.html</div>
     </a>
 
-    <a class="card" href="./flappy_bird_clone_html_5_canvas.html" target="_blank" rel="noopener">
+    <a class="card" href="./flappy_bird_clone_html_5_canvas.html?v=20250812" target="_blank" rel="noopener">
       <div class="title">플래피 버드 (HTML5 Canvas)</div>
       <div class="meta">flappy_bird_clone_html_5_canvas.html</div>
     </a>
 
-    <a class="card" href="./수박게임_suika_클론_단일_html_파일.html" target="_blank" rel="noopener">
+    <a class="card" href="./수박게임_suika_클론_단일_html_파일.html?v=20250812" target="_blank" rel="noopener">
       <div class="title">수박게임 (단일 HTML)</div>
       <div class="meta">수박게임_suika_클론_단일_html_파일.html</div>
     </a>
 
-    <a class="card" href="./yacht.html" target="_blank" rel="noopener">
-      <div class="title">요트(Yahtzee) React (Babel 실행)</div>
-      <div class="meta">yacht.html → yacht_yahtzee_style_dice_game_react_kr.jsx</div>
+    <!-- JSX → 컴파일된 JS로 동작하는 버전 -->
+    <a class="card" href="./yacht.html?v=20250812" target="_blank" rel="noopener">
+      <div class="title">요트(Yahtzee) React <span class="tag">compiled</span></div>
+      <div class="meta">yacht.html → yacht.compiled.js (React UMD)</div>
     </a>
   </main>
 
   <footer>
     <div>배포: GitHub Pages (<code>main / (root)</code>)</div>
-    <div class="note">참고: JSX 원본 파일은 직접 열리지 않습니다. <code>yacht.html</code>을 통해 실행하세요. 한글 파일명은 주소창에서 인코딩될 수 있으나 링크로는 문제 없습니다.</div>
+    <div class="note">캐시 갱신이 안 되면 주소 끝의 <code>?v=20250812</code> 값을 올리세요.</div>
   </footer>
 </body>
 </html>
