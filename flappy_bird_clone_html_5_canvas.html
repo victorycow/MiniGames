@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>플래피 버드 클론 · HTML5 Canvas</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    html, body {
+      margin: 0; height: 100%;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Apple SD Gothic Neo, Noto Sans KR, sans-serif;
+      background: #0b0f14; color: #e8eefc;
+    }
+    #wrap { position: fixed; inset: 0; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .hud { position: absolute; inset: 0; pointer-events: none; }
+    .topbar { position: absolute; left: 16px; right: 16px; top: 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+    .badge { backdrop-filter: blur(6px); background: rgba(10,15,22,.5); border: 1px solid rgba(255,255,255,.08); padding: 8px 12px; border-radius: 999px; pointer-events: auto; }
+    .controls { position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; font-size: 12px; opacity: .8; }
+    .btnbar { display: inline-flex; gap: 8px; }
+    .btn { pointer-events: auto; cursor: pointer; border: 1px solid rgba(255,255,255,.12); background: rgba(20,28,40,.6); border-radius: 999px; padding: 8px 12px; font-weight: 600; }
+    .btn[aria-pressed="true"] { background: rgba(80,160,255,.2); border-color: rgba(80,160,255,.6); }
+    .center { position: absolute; inset: 0; display: grid; place-items: center; }
+    .panel { pointer-events: auto; width: min(520px, 92vw); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,.12); background: linear-gradient(180deg, rgba(15,20,30,.85), rgba(10,14,22,.85)); box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+    .panel h1 { margin: 0 0 8px; font-size: clamp(24px, 5vw, 34px); }
+    .panel p { margin: 6px 0; opacity: .9; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game"></canvas>
+    <div class="hud">
+      <div class="topbar">
+        <div class="badge" id="scoreBadge">점수 0</div>
+        <div class="btnbar">
+          <button class="btn" id="pauseBtn" aria-pressed="false" title="P">일시정지</button>
+          <button class="btn" id="restartBtn" title="R">다시시작</button>
+        </div>
+      </div>
+      <div class="controls">PC: Space/W/↑ 또는 클릭 = 점프 · P = 일시정지 · R = 재시작 ｜ 모바일: 화면 탭 = 점프</div>
+      <div class="center" id="menu">
+        <div class="panel">
+          <h1>플래피 버드 클론</h1>
+          <p>장애물을 피해 새를 날려보세요. 파이프를 지날 때마다 점수가 올라갑니다.</p>
+          <div style="height:8px"></div>
+          <strong>난이도</strong>
+          <div class="row" id="difficultyRow"></div>
+          <div style="height:12px"></div>
+          <div class="row">
+            <button class="btn" id="startBtn">시작하기 (Space/탭)</button>
+          </div>
+          <p style="font-size:12px; opacity:.8; margin-top:10px">고득점은 로컬에 저장됩니다.</p>
+        </div>
+      </div>
+      <div class="center hidden" id="gameover">
+        <div class="panel">
+          <h1>게임 오버</h1>
+          <p id="finalScore">점수 0</p>
+          <p id="bestScore">최고기록 0</p>
+          <div class="row">
+            <button class="btn" id="retryBtn">다시 도전 (R)</button>
+            <button class="btn" id="menuBtn">메뉴로</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const scoreBadge = document.getElementById('scoreBadge');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const menu = document.getElementById('menu');
+    const gameover = document.getElementById('gameover');
+    const startBtn = document.getElementById('startBtn');
+    const retryBtn = document.getElementById('retryBtn');
+    const menuBtn = document.getElementById('menuBtn');
+    const difficultyRow = document.getElementById('difficultyRow');
+
+    const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    let vw = 0, vh = 0, groundH = 0;
+
+    const DIFFICULTIES = [
+      { key: 'easy',   name: 'Easy',   gap: 180, gravity: 1600, flap: 430, speed: 170, spawn: [1200, 1400] },
+      { key: 'normal', name: 'Normal', gap: 150, gravity: 1750, flap: 430, speed: 190, spawn: [1050, 1250] },
+      { key: 'hard',   name: 'Hard',   gap: 130, gravity: 1900, flap: 430, speed: 210, spawn: [950, 1150] }
+    ];
+
+    let audioCtx = null;
+    function beep(type = 'flap') {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'sine';
+        const now = audioCtx.currentTime;
+        let freq = 680, dur = 0.08, startGain = 0.12;
+        if (type === 'score') { freq = 880; dur = 0.1; startGain = 0.15; }
+        if (type === 'hit')   { freq = 120; dur = 0.25; startGain = 0.2; }
+        if (type === 'start') { freq = 520; dur = 0.12; startGain = 0.12; }
+        o.frequency.setValueAtTime(freq, now);
+        g.gain.setValueAtTime(startGain, now);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(now); o.stop(now + dur);
+      } catch {}
+    }
+
+    const state = {
+      mode: 'menu', // 'menu' | 'playing' | 'paused' | 'gameover'
+      score: 0, best: Number(localStorage.getItem('flappyBest') || 0),
+      difficulty: DIFFICULTIES[1],
+      lastTime: 0,
+      spawnTimer: 0,
+      spawnInterval: 1200,
+      pipes: [],
+      skyScroll: 0,
+      groundScroll: 0,
+    };
+
+    const bird = {
+      x: 0, y: 0, r: 18, vy: 0, rot: 0,
+      update(dt) {
+        this.vy += state.difficulty.gravity * dt;
+        this.y += this.vy * dt;
+        // Rotation for visual feedback
+        this.rot = Math.atan2(this.vy, 300);
+      },
+      flap() {
+        this.vy = -state.difficulty.flap;
+        beep('flap');
+      },
+      reset() {
+        this.x = Math.max(90, vw * 0.26);
+        this.y = vh * 0.45;
+        this.vy = 0; this.rot = 0;
+      }
+    };
+
+    function rand(min, max) { return Math.random() * (max - min) + min; }
+
+    function resize() {
+      vw = window.innerWidth; vh = window.innerHeight;
+      groundH = Math.max(90, Math.min(140, Math.round(vh * 0.14)));
+      canvas.width = Math.floor(vw * DPR);
+      canvas.height = Math.floor(vh * DPR);
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+
+    function setDifficulty(idx) {
+      state.difficulty = DIFFICULTIES[idx];
+      for (const b of difficultyButtons) b.setAttribute('aria-pressed', 'false');
+      difficultyButtons[idx].setAttribute('aria-pressed', 'true');
+    }
+
+    // Build difficulty buttons
+    const difficultyButtons = DIFFICULTIES.map((d, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.textContent = d.name;
+      btn.addEventListener('click', () => setDifficulty(i));
+      difficultyRow.appendChild(btn);
+      return btn;
+    });
+
+    // Default selection
+    setDifficulty(1);
+
+    function resetGame() {
+      state.score = 0;
+      state.pipes.length = 0;
+      state.spawnTimer = 0;
+      const [a,b] = state.difficulty.spawn;
+      state.spawnInterval = rand(a, b);
+      bird.reset();
+      scoreBadge.textContent = `점수 ${state.score}`;
+    }
+
+    function startGame() { // from menu or restart
+      resetGame();
+      state.mode = 'playing';
+      hide(menu); hide(gameover);
+      beep('start');
+    }
+
+    function showMenu() {
+      state.mode = 'menu';
+      show(menu); hide(gameover);
+    }
+
+    function endGame() {
+      state.mode = 'gameover';
+      show(gameover);
+      document.getElementById('finalScore').textContent = `점수 ${state.score}`;
+      if (state.score > state.best) {
+        state.best = state.score;
+        localStorage.setItem('flappyBest', String(state.best));
+      }
+      document.getElementById('bestScore').textContent = `최고기록 ${state.best}`;
+      beep('hit');
+    }
+
+    function hide(el){ el.classList.add('hidden'); }
+    function show(el){ el.classList.remove('hidden'); }
+
+    function spawnPipe() {
+      const gap = state.difficulty.gap;
+      const minTop = 40;
+      const maxBottom = vh - groundH - 40;
+      const gapY = rand(minTop + gap*0.5, maxBottom - gap*0.5);
+      const width = 70;
+      const x = vw + 40;
+      state.pipes.push({ x, width, gapY, gapH: gap, scored: false });
+    }
+
+    function update(dt) {
+      if (state.mode !== 'playing') return;
+
+      state.skyScroll = (state.skyScroll + dt * (state.difficulty.speed * 0.2)) % (vw);
+      state.groundScroll = (state.groundScroll + dt * (state.difficulty.speed * 1.2)) % (vw);
+
+      bird.update(dt);
+
+      state.spawnTimer += dt * 1000;
+      if (state.spawnTimer >= state.spawnInterval) {
+        spawnPipe();
+        const [a,b] = state.difficulty.spawn;
+        state.spawnInterval = rand(a, b);
+        state.spawnTimer = 0;
+      }
+
+      // Move pipes
+      for (const p of state.pipes) {
+        p.x -= state.difficulty.speed * dt;
+      }
+      // Remove off-screen pipes
+      while (state.pipes.length && state.pipes[0].x + state.pipes[0].width < -80) {
+        state.pipes.shift();
+      }
+
+      // Collision and scoring
+      const bx = bird.x, by = bird.y, br = bird.r;
+
+      // Floor / ceiling
+      if (by + br >= vh - groundH || by - br <= 0) {
+        endGame();
+        return;
+      }
+
+      for (const p of state.pipes) {
+        // Score when passing pipe
+        if (!p.scored && p.x + p.width < bx) {
+          p.scored = true; state.score++; scoreBadge.textContent = `점수 ${state.score}`; beep('score');
+        }
+        // AABB check vertically outside the gap when overlapping horizontally
+        const withinX = bx + br > p.x && bx - br < p.x + p.width;
+        if (withinX) {
+          const gapTop = p.gapY - p.gapH * 0.5;
+          const gapBot = p.gapY + p.gapH * 0.5;
+          if (by - br < gapTop || by + br > gapBot) {
+            endGame();
+            return;
+          }
+        }
+      }
+    }
+
+    function drawBackground() {
+      // Sky gradient
+      const g = ctx.createLinearGradient(0, 0, 0, vh);
+      g.addColorStop(0, '#0f1a2a');
+      g.addColorStop(1, '#0a1220');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, vw, vh);
+
+      // Stars (static sprinkled)
+      const starCount = Math.floor(vw * vh / 30000);
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#a9c6ff';
+      for (let i=0; i<starCount; i++) {
+        const x = (i * 137.5 + 23) % vw; // deterministic scatter
+        const y = (i * 91.3 + 53) % (vh - groundH);
+        ctx.fillRect((x + state.skyScroll*0.3) % vw, y * 0.6 + 10, 1, 1);
+      }
+      ctx.globalAlpha = 1;
+
+      // Parallax hills
+      function hills(yOff, amp, speedMul, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(0, vh - groundH - yOff);
+        for (let x=0; x<=vw; x+=10) {
+          const t = (x + state.skyScroll * speedMul) * 0.004;
+          const y = Math.sin(t) * amp + (vh - groundH - yOff);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(vw, vh - groundH + 200);
+        ctx.lineTo(0, vh - groundH + 200);
+        ctx.closePath(); ctx.fill();
+      }
+      hills(120, 18, 0.3, '#101a28');
+      hills(80,  26, 0.45, '#0e1725');
+    }
+
+    function drawGround() {
+      const y = vh - groundH;
+      ctx.fillStyle = '#152031';
+      ctx.fillRect(0, y, vw, groundH);
+      // stripes
+      ctx.globalAlpha = 0.22;
+      for (let x = - (state.groundScroll % 40); x < vw; x += 40) {
+        ctx.fillRect(x, y, 20, groundH);
+      }
+      ctx.globalAlpha = 1;
+      // top bevel
+      ctx.fillStyle = '#1d2a3f';
+      ctx.fillRect(0, y - 3, vw, 3);
+    }
+
+    function drawPipes() {
+      for (const p of state.pipes) {
+        const x = p.x, w = p.width;
+        const topH = p.gapY - p.gapH * 0.5;
+        const botY = p.gapY + p.gapH * 0.5;
+        const botH = vh - groundH - botY;
+        // body
+        const grad = ctx.createLinearGradient(x, 0, x+w, 0);
+        grad.addColorStop(0, '#2a7a2b');
+        grad.addColorStop(1, '#3ba83c');
+        ctx.fillStyle = grad;
+        // top pipe
+        ctx.fillRect(x, 0, w, topH);
+        // bottom pipe
+        ctx.fillRect(x, botY, w, botH);
+        // rims
+        ctx.fillStyle = '#1f5c21';
+        ctx.fillRect(x - 4, topH - 12, w + 8, 12);
+        ctx.fillRect(x - 4, botY, w + 8, 12);
+      }
+    }
+
+    function drawBird() {
+      const { x, y, r } = bird;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(bird.rot * 0.6);
+      // body
+      const grad = ctx.createLinearGradient(-r, -r, r, r);
+      grad.addColorStop(0, '#ffd966');
+      grad.addColorStop(1, '#ffae42');
+      ctx.fillStyle = grad;
+      roundRect(ctx, -r, -r, r*2, r*2, r*0.6, true, false);
+      // eye
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(r*0.25, -r*0.35, r*0.28, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(r*0.35, -r*0.35, r*0.14, 0, Math.PI*2); ctx.fill();
+      // beak
+      ctx.fillStyle = '#ff8f33';
+      ctx.beginPath(); ctx.moveTo(r*0.9, -r*0.1); ctx.lineTo(r*1.5, 0); ctx.lineTo(r*0.9, r*0.1); ctx.closePath(); ctx.fill();
+      // wing (flap)
+      const flap = Math.sin(perfNow()*0.02) * 0.4 + 0.6;
+      ctx.save();
+      ctx.translate(-r*0.2, 0);
+      ctx.rotate(-flap * 0.9);
+      ctx.fillStyle = '#ffc24b';
+      roundRect(ctx, -r*0.7, -r*0.35, r*1.0, r*0.7, r*0.35, true, false);
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+      if (w < 2*r) r = w/2; if (h < 2*r) r = h/2;
+      ctx.beginPath();
+      ctx.moveTo(x+r, y);
+      ctx.arcTo(x+w, y, x+w, y+h, r);
+      ctx.arcTo(x+w, y+h, x, y+h, r);
+      ctx.arcTo(x, y+h, x, y, r);
+      ctx.arcTo(x, y, x+w, y, r);
+      ctx.closePath();
+      if (fill) ctx.fill(); if (stroke) ctx.stroke();
+    }
+
+    function drawUI() {
+      // Score already shown in badge; optional big score during play
+      if (state.mode === 'playing') {
+        ctx.font = '700 40px system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText(String(state.score), vw/2, 22);
+      } else if (state.mode === 'paused') {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(0,0,vw,vh);
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 28px system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('일시정지됨 (P로 재개)', vw/2, vh/2);
+      }
+    }
+
+    function draw() {
+      drawBackground();
+      drawPipes();
+      drawGround();
+      drawBird();
+      drawUI();
+    }
+
+    function step(ts) {
+      const dt = Math.min(0.033, (ts - state.lastTime) / 1000 || 0); // clamp ~30ms
+      state.lastTime = ts;
+      if (state.mode === 'playing') update(dt);
+      // Render always (so UI shows when paused/menu)
+      ctx.clearRect(0,0,vw,vh);
+      draw();
+      requestAnimationFrame(step);
+    }
+
+    function perfNow(){ return (performance && performance.now) ? performance.now() : Date.now(); }
+
+    // Input handlers
+    function doFlap() {
+      if (state.mode === 'menu') { startGame(); return; }
+      if (state.mode === 'playing') { bird.flap(); return; }
+      if (state.mode === 'paused') { togglePause(false); return; }
+      if (state.mode === 'gameover') { startGame(); return; }
+    }
+
+    function togglePause(forcePlay) {
+      if (forcePlay === true) { state.mode = 'playing'; pauseBtn.setAttribute('aria-pressed','false'); return; }
+      if (state.mode === 'playing') { state.mode = 'paused'; pauseBtn.setAttribute('aria-pressed','true'); }
+      else if (state.mode === 'paused') { state.mode = 'playing'; pauseBtn.setAttribute('aria-pressed','false'); }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); doFlap(); }
+      if (e.code === 'KeyP') togglePause();
+      if (e.code === 'KeyR') { startGame(); }
+    });
+
+    // Click / tap
+    canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); doFlap(); }, { passive: false });
+
+    pauseBtn.addEventListener('click', () => togglePause());
+    restartBtn.addEventListener('click', () => startGame());
+    startBtn.addEventListener('click', () => startGame());
+    retryBtn.addEventListener('click', () => startGame());
+    menuBtn.addEventListener('click', () => showMenu());
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && state.mode === 'playing') togglePause();
+    });
+
+    window.addEventListener('resize', resize);
+
+    // Init
+    resize();
+    bird.reset();
+    requestAnimationFrame(step);
+  })();
+  </script>
+</body>
+</html>
