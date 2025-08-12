@@ -3,33 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Yacht Game React (JSX via Babel)</title>
+  <title>Yacht Game React (compiled)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    html,body,#root{height:100%} body{margin:0;font-family:system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Malgun Gothic,sans-serif}
-  </style>
 </head>
 <body>
-  <script type="text/babel" data-presets="env,react" src="./yacht_yahtzee_style_dice_game_react_kr.jsx"></script>
   <div id="root"></div>
 
-  <!-- React / ReactDOM (UMD, production) -->
+  <!-- React / ReactDOM UMD (필수) -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-  <!-- Babel Standalone: 브라우저에서 JSX를 즉석 변환 (개발/테스트 용도) -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <!-- 네가 올린 JSX 파일을 그대로 로드 -->
-  <!-- JSX 내부에서 React/ReactDOM을 전역(UMD)으로 사용한다고 가정 -->
-  <script type="text/babel" src="./yacht_yahtzee_style_dice_game_react_kr.jsx"></script>
-
-  <!-- 만약 JSX 파일 끝에 render 호출이 없다면, 아래 주석 해제하고 App 컴포넌트 이름 맞춰서 사용 -->
-  <!--
-  <script type="text/babel">
-    // 예: JSX 안에 App 컴포넌트만 있고 렌더 호출이 없다면:
-    // ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
-  -->
+  <!-- 👇 컴파일된 결과물만 로드 -->
+  <script src="./yacht.compiled.js"></script>
 </body>
 </html>
