@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Bullet Hell | HTML5 Canvas (Survival)</title>
+  <style>
+    :root{
+      --bg:#0b0f14; --fg:#e8eefc; --muted:#93a1b1;
+      --accent:#8ab4f8; --accent2:#a78bfa; --danger:#ff6b6b; --ok:#34d399;
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,sans-serif}
+    #wrap{position:relative;width:100%;height:100%;overflow:hidden}
+    canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;user-select:none;-webkit-user-select:none}
+    .hud{position:absolute;inset:0;pointer-events:none}
+    .top{position:absolute;left:8px;right:8px;top:8px;display:grid;grid-template-columns:1fr auto auto auto auto auto;gap:8px;align-items:center}
+    .chip{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(6px);padding:6px 10px;border-radius:999px;color:#dbe7ff}
+    .chip strong{color:#fff}
+    .ctr{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center}
+    .panel{display:inline-block;min-width:280px;max-width:min(88vw,860px);text-align:left;background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.12);padding:20px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+    h1{margin:0 0 8px;font-size:28px;letter-spacing:.2px}
+    .muted{color:#a9b8d6}
+    kbd{font:12px/1 monospace;background:rgba(255,255,255,.12);padding:2px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.2)}
+    ul{margin:8px 0 0 18px}
+    .btns{margin-top:12px;display:flex;gap:8px}
+    .btn{pointer-events:auto;cursor:pointer;border:1px solid rgba(255,255,255,.2);background:rgba(138,180,248,.18);color:#fff;border-radius:10px;padding:10px 14px}
+    .btn.secondary{background:rgba(255,255,255,.06)}
+    .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+    /* --- Mobile touch controls --- */
+    .touch-ui{position:absolute;inset:0;display:flex;justify-content:space-between;align-items:flex-end;padding:12px;gap:12px;pointer-events:none}
+    .touch-ui .stick{pointer-events:auto;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);position:relative;touch-action:none}
+    .stick .knob{position:absolute;left:50%;top:50%;width:56px;height:56px;border-radius:50%;background:rgba(138,180,248,.3);border:1px solid rgba(255,255,255,.2);transform:translate(-50%,-50%)}
+    .mobileBtns{pointer-events:auto;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .tbtn{font:12px/1.2 system-ui;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:12px;padding:12px;min-width:88px;min-height:48px;touch-action:manipulation}
+    .tbtn.main{background:rgba(138,180,248,.2)}
+    @media (hover:hover) and (pointer:fine){.touch-ui{display:none}}
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game"></canvas>
+    <div class="hud">
+      <div class="top">
+        <div class="chip">스테이지 <strong id="stage">STAGE 1</strong> · 점수 <strong id="score">0</strong></div>
+        <div class="chip">라이프 <strong id="lives">3</strong></div>
+        <div class="chip">폭탄 <strong id="bombs">2</strong></div>
+        <div class="chip">타이머 <strong id="timer">20.0</strong></div>
+        <div class="chip">FPS <strong id="fps">0</strong></div>
+      </div>
+      <div class="ctr" id="menu">
+        <div class="panel">
+          <h1>Bullet Hell — Survival</h1>
+          <div class="muted">WASD/방향키 이동, <kbd>Shift</kbd> 정밀 이동, <kbd>X</kbd> 폭탄, <kbd>P</kbd> 일시정지 — <strong>사격 없음</strong></div>
+          <ul class="muted">
+            <li>작은 히트박스(3px). 빈틈을 찾아서 <em>버틴다</em>.</li>
+            <li>보스는 나선형 탄막을 시간에 따라 강화해 뿜어낸다.</li>
+            <li>Graze(근접 스치기)로 점수 보너스.</li>
+          </ul>
+          <div class="btns">
+            <button class="btn" id="startBtn">시작</button>
+            <button class="btn secondary" id="howBtn">조작법</button>
+          </div>
+        </div>
+      </div>
+      <div class="ctr" id="how" style="display:none">
+        <div class="panel">
+          <h1>조작법</h1>
+          <div class="muted">이동: WASD/방향키 · 정밀이동: Shift · 폭탄: X · 일시정지: P · 재시작: R — 사격 없음(서바이벌)</div>
+          <ul class="muted">
+            <li>폭탄: 화면 내 적탄 삭제 + 잠시 무적.</li>
+            <li>스테이지 목표: 타이머가 0이 될 때까지 생존.</li>
+          </ul>
+          <div class="btns"><button class="btn" id="backBtn">뒤로</button></div>
+        </div>
+      </div>
+      <div class="touch-ui" id="touch">
+        <div class="stick" id="stick"><div class="knob"></div></div>
+        <div class="mobileBtns">
+          <button class="tbtn" id="btnBomb">BOMB</button>
+          <button class="tbtn" id="btnSlow">SLOW</button>
+          <button class="tbtn" id="btnPause">PAUSE</button>
+        </div>
+      </div>
+      <div class="flash" id="flash"></div>
+    </div>
+  </div>
+
+<script>
+(()=>{
+  'use strict';
+  // ---------- Canvas Setup (HiDPI) ----------
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  function resize(){
+    // FIX: do NOT assign to read-only clientWidth/clientHeight
+    const w = Math.floor(window.innerWidth);
+    const h = Math.floor(window.innerHeight);
+    // set backing store size (DPI-aware)
+    canvas.width = w * DPR;
+    canvas.height = h * DPR;
+    // ensure CSS size matches (avoids blur when DPR changes)
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize); resize();
+  const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints>0);
+
+  // ---------- UI Elements ----------
+  const $stage = document.getElementById('stage');
+  const $score = document.getElementById('score');
+  const $lives = document.getElementById('lives');
+  const $bombs = document.getElementById('bombs');
+  const $fps = document.getElementById('fps');
+  const $timer = document.getElementById('timer');
+  const $menu = document.getElementById('menu');
+  const $how = document.getElementById('how');
+  const $startBtn = document.getElementById('startBtn');
+  const $howBtn = document.getElementById('howBtn');
+  const $backBtn = document.getElementById('backBtn');
+  const $flash = document.getElementById('flash');
+
+  // Touch controls init
+  setupTouchControls();
+
+  $startBtn.onclick = ()=>{ startGame(); };
+  $howBtn.onclick = ()=>{ $menu.style.display='none'; $how.style.display=''; };
+  $backBtn.onclick = ()=>{ $how.style.display='none'; $menu.style.display=''; };
+
+  // ---------- Utilities ----------
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const rand=(a=1,b=0)=>Math.random()*(b-a)+a; // rand(min,max)
+  const TAU = Math.PI*2;
+  // Config: survival mode hides boss HP bar
+  const SHOW_BOSS_HP = false;
+  // Drop rates (unused in survival unless we add timed drops)
+  const NORMAL_DROP_RATE = 0.08; // 일반 적 확률(8%)
+
+  function a2v(angle, speed){ return {x: Math.cos(angle)*speed, y: Math.sin(angle)*speed}; }
+  function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
+
+  // ---------- Input ----------
+  const input = { up:0, down:0, left:0, right:0, slow:0, shoot:0, bomb:0, pause:0, restart:0 };
+  const keymap = {
+    ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right',
+    'w':'up','a':'left','s':'down','d':'right', Shift:'slow', 'z':'shoot', ' ':'shoot', 'x':'bomb', 'p':'pause','r':'restart'
+  };
+  addEventListener('keydown', e=>{ const k=keymap[e.key]; if(!k) return; if(k==='pause') togglePause(); if(k==='restart') wantRestart=true; input[k]=1; if(['z',' ','x'].includes(e.key)) e.preventDefault(); });
+  addEventListener('keyup',   e=>{ const k=keymap[e.key]; if(!k) return; input[k]=0; });
+
+  // ---------- Game State ----------
+  let state = 'menu'; // menu | play | pause | gameover | victory
+  let wantRestart = false;
+  let score=0, stageWorld=1, stageLevel=1; let stageTime=0; const TIME_PER_STAGE=20;
+  let player, bullets=[], ebullets=[], particles=[], enemies=[], items=[], effects=[];
+  let lives=3, bombs=2, invuln=0, grazeChain=0, freeze=0;
+
+  // ---------- Entities ----------
+  class Player{
+    constructor(){
+      this.x = canvas.width/DPR/2; this.y = canvas.height/DPR*0.8;
+      this.speed = 300; this.slowSpeed = 150; this.r = 3; this.cd = 0; this.grazeR = 8; this.alive=true;
+    }
+    update(dt){
+      const sp = input.slow? this.slowSpeed : this.speed;
+      let vx = (input.right-input.left)*sp; let vy=(input.down-input.up)*sp;
+      this.x = clamp(this.x + vx*dt, 12, canvas.width/DPR-12);
+      this.y = clamp(this.y + vy*dt, 12, canvas.height/DPR-12);
+
+      // No shooting in survival mode
+
+      // Graze detection
+      for(const b of ebullets){
+        const d2 = dist2(this,b);
+        const gr = (this.grazeR+b.r)*(this.grazeR+b.r);
+        if(d2<gr && !b.grazed){ b.grazed=1; score+=5+Math.min(25,grazeChain); grazeChain++; spawnSpark(this.x,this.y,'#aaf'); }
+      }
+
+      // Collisions (small hitbox)
+      if(invuln>0) invuln -= dt; else {
+        for(const b of ebullets){
+          const r = this.r + b.r*0.7;
+          if(dist2(this,b) < r*r){
+            killPlayer(); break;
+          }
+        }
+      }
+    }
+    draw(){ ctx.save(); ctx.translate(this.x,this.y);
+      // Boss core only — no HP bar/UI in survival
+      ctx.beginPath(); ctx.arc(0,0, 20, 0, TAU); ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0, 8, 0, TAU); ctx.fillStyle='rgba(255,107,107,.9)'; ctx.fill();
+      ctx.restore();
+      // If ever needed, a conditional HP UI could be drawn when SHOW_BOSS_HP===true
+      if(false && SHOW_BOSS_HP){
+        const w = canvas.width/DPR*0.6, x = canvas.width/DPR*0.2, y=24;
+        ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fillRect(x,y,w,8);
+        const pct = clamp(this.hp/this.maxHP,0,1);
+        ctx.fillStyle='#ff6b6b'; ctx.fillRect(x,y,w*pct,8);
+        ctx.fillStyle='#fff'; ctx.font='12px system-ui'; ctx.fillText(`${this.name} — LV ${this.world||1}`, x, y-4);
+      }
+    }
+  }
+
+  class Bullet{ // (unused in survival)
+    constructor(x,y,vx,vy,r=3,col='#8ab4f8'){
+      this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.r=r; this.col=col; this.dead=false;
+    }
+    update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; if(this.y<-20||this.x<-20||this.x>canvas.width/DPR+20||this.y>canvas.height/DPR+20) this.dead=true; }
+    draw(){ ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,TAU); ctx.fillStyle=this.col; ctx.fill(); }
+  }
+
+  class EBullet{ // enemy bullet
+    constructor(x,y,vx,vy,r=4,col='rgba(255,107,107,.9)'){
+      this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.r=r; this.col=col; this.dead=false; this.grazed=0; this.spin=0; this.ay=0; this.ax=0;
+    }
+    update(dt){ this.vx+=this.ax*dt; this.vy+=this.ay*dt; this.x+=this.vx*dt; this.y+=this.vy*dt; if(this.y<-40||this.x<-40||this.x>canvas.width/DPR+40||this.y>canvas.height/DPR+40) this.dead=true; }
+    draw(){ ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,TAU); ctx.fillStyle=this.col; ctx.fill(); }
+  }
+
+  class Particle{
+    constructor(x,y,vx,vy,life,col){ this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.life=life; this.col=col; }
+    update(dt){ this.life-=dt; this.x+=this.vx*dt; this.y+=this.vy*dt; }
+    draw(){ ctx.globalAlpha = Math.max(0,this.life); ctx.fillStyle=this.col; ctx.fillRect(this.x,this.y,2,2); ctx.globalAlpha=1; }
+  }
+  class Item{ // pickup: life or bomb
+    constructor(x,y,type){ this.x=x; this.y=y; this.type=type; this.r=9; this.vy=60; this.dead=false; this.t=0; }
+    update(dt){ this.t+=dt; this.y+=this.vy*dt; if(this.y>canvas.height/DPR+20) this.dead=true; }
+    draw(){ ctx.save(); ctx.translate(this.x,this.y); ctx.globalAlpha=0.9; ctx.beginPath(); ctx.arc(0,0,this.r,0,TAU); ctx.fillStyle=(this.type==='life')?'rgba(52,211,153,.9)':'rgba(138,180,248,.9)'; ctx.fill(); ctx.globalAlpha=1; ctx.fillStyle='#0b0f14'; ctx.font='bold 10px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(this.type==='life'?'+':'B',0,0.5); ctx.restore(); }
+  }
+
+  class Enemy{ // not used in survival, kept for future use
+    constructor(x,y,hp=20){ this.x=x; this.y=y; this.hp=hp; this.t=0; this.dead=false; this.score=100; }
+    update(dt){ this.t+=dt; if(this.hp<=0&&!this.dead){ this.dead=true; spawnExplosion(this.x,this.y); tryDrop(this); score+=this.score; } }
+    draw(){ ctx.save(); ctx.translate(this.x,this.y); ctx.fillStyle='rgba(167,139,250,.4)'; ctx.beginPath(); ctx.arc(0,0,12,0,TAU); ctx.fill(); ctx.restore(); }
+  }
+
+  class Boss extends Enemy{
+    constructor(x,y,hp=600, world=1){ super(x,y,hp); this.isBoss=true; this.world=world; this.diff=1+(world-1)*0.2; this.phase=0; this.maxHP=hp; this.name='Protocol Chimera'; this.timer=0; this.dir=1; this.score=2000; }
+    update(dt){ this.t+=dt; this.timer+=dt; // Movement: slow horizontal sweep
+      this.x += Math.sin(this.timer*0.7)*40*dt; this.y = clamp(this.y, 80, 160);
+      // Single-pattern boss
+      pattern_spiral(this, dt);
+    }
+    draw(){ ctx.save(); ctx.translate(this.x,this.y);
+      ctx.beginPath(); ctx.arc(0,0, 20, 0, TAU); ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(0,0, 8, 0, TAU); ctx.fillStyle='rgba(255,107,107,.9)'; ctx.fill();
+      ctx.restore();
+      const w = canvas.width/DPR*0.6, x = canvas.width/DPR*0.2, y=24;
+      ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fillRect(x,y,w,8);
+      const pct = clamp(this.hp/this.maxHP,0,1);
+      ctx.fillStyle='#ff6b6b'; ctx.fillRect(x,y,w*pct,8);
+      ctx.fillStyle='#fff'; ctx.font='12px system-ui'; ctx.fillText(`${this.name} — LV ${this.world||1}`, x, y-4);
+    }
+  }
+
+  // ---------- Patterns ----------
+  function pattern_spiral(e, dt){ // single-phase spiral with difficulty scaling by e.diff
+    e._clk = (e._clk||0) + dt;
+    const diff = e.diff||1; // 1 on stage 1, grows with world
+    const rate = Math.max(0.02, 0.06 / diff); // higher diff => faster fire
+    if(e._clk > rate){
+      e._clk = 0;
+      const base = e.t * (1.8 + 0.5*diff); // rotation speed scales
+      const streams = 2 + (diff>=1.6?1:0) + (diff>=2.2?1:0); // add streams as world rises
+      const spd = 120 * (1 + 0.25*(diff-1));
+      for(let i=0;i<streams;i++){
+        const ang = base + i*(Math.PI*2/streams);
+        const v=a2v(ang, spd);
+        ebullets.push(new EBullet(e.x,e.y, v.x, v.y, 4, 'rgba(255,176,0,.9)'));
+      }
+    }
+    if(Math.random() < 0.02*diff){ // aimed darts
+      const to=Math.atan2(player.y-e.y, player.x-e.x); const v=a2v(to, 180+40*(diff-1));
+      ebullets.push(new EBullet(e.x,e.y, v.x, v.y, 4, '#fff'));
+    }
+    if(Math.random() < 0.015*diff){ // falling stars
+      const a=rand(Math.PI*0.2, Math.PI*0.8); const v=a2v(a, rand(40, 80+10*diff));
+      const b=new EBullet(e.x,e.y, v.x, v.y, 3, 'rgba(167,139,250,.9)'); b.ay=10+5*(diff-1); ebullets.push(b);
+    }
+  }
+
+  // ---------- Spawning / Waves ----------
+  function spawnBoss(){
+    const world = stageWorld;
+    const baseHP = 700;
+    const hp = Math.round(baseHP * (1 + 0.35*(world-1))); // world scaling
+    const b=new Boss(canvas.width/DPR/2, 120, hp, world);
+    b.diff = 1 + 0.2*(world-1);
+    enemies.push(b);
+  }
+
+  function nextStage(){
+    // Survival: each stage spawns one boss-scale emitter and runs a timer
+    $stage.textContent = `STAGE ${stageWorld}`;
+    enemies.length=0; bullets.length=0; ebullets.length=0; // reset field
+    spawnBoss(); // uses current stageWorld for scaling
+    stageTime = TIME_PER_STAGE;
+    stageWorld++;
+  }
+
+  // ---------- Player Actions ----------
+  function killPlayer(){
+    if(invuln>0) return; lives--; updateHUD(); grazeChain=0; invuln=2.2; flashScreen(); spawnExplosion(player.x,player.y);
+    if(lives<0){ state='gameover'; showMenu(`GAME OVER`, `점수 ${score.toLocaleString()}  ·  <kbd>R</kbd> 재시작`); }
+  }
+  function useBomb(){ if(bombs<=0) return; bombs--; updateHUD(); clearBullets(true); invuln=2; spawnShockwave(player.x,player.y); }
+
+  // ---------- VFX ----------
+  function spawnExplosion(x,y){ for(let i=0;i<40;i++){ const a=rand(0,TAU), s=rand(40,220); const v=a2v(a,s); particles.push(new Particle(x,y,v.x,v.y, rand(0.5,1.1), 'rgba(255,255,255,.9)')); } }
+  function spawnSpark(x,y,col){ particles.push(new Particle(x,y, rand(-20,20), rand(-20,20), 0.2, col)); }
+  function spawnShockwave(x,y){ effects.push({x,y,r:10, life:0.6}); }
+  function drawEffects(dt){ for(const e of effects){ e.life-=dt; e.r += 800*dt; ctx.globalAlpha=Math.max(0,e.life); ctx.strokeStyle='white'; ctx.beginPath(); ctx.arc(e.x,e.y,e.r,0,TAU); ctx.stroke(); ctx.globalAlpha=1; } effects=effects.filter(e=>e.life>0); }
+  function flashScreen(){ $flash.style.transition='none'; $flash.style.opacity=0.8; requestAnimationFrame(()=>{ $flash.style.transition='opacity 300ms'; $flash.style.opacity=0; }); }
+
+  // ---------- Helpers ----------
+  function spawnItem(x,y,type){ items.push(new Item(x,y,type)); }
+  function tryDrop(e){ // 보스는 100% 한 개, 일반 적은 확률 드랍 (현재 생존 모드에선 적 처치 트리거가 거의 없음)
+    const willDrop = e.isBoss ? true : (Math.random() < NORMAL_DROP_RATE);
+    if(!willDrop) return;
+    const type = Math.random()<0.5 ? 'life' : 'bomb';
+    spawnItem(e.x, e.y, type);
+  }
+
+  function clearBullets(scoreBonus=false){ const n=ebullets.length; ebullets.length=0; if(scoreBonus) score+=n*2; }
+  function updateHUD(){ $score.textContent=score.toLocaleString(); $lives.textContent=Math.max(0,lives).toString(); $bombs.textContent=bombs.toString(); if($timer) $timer.textContent = stageTime.toFixed(1); }
+  function showMenu(title, subtitle){
+    const tpl = `<div class="panel"><h1>${title}</h1><div class="muted">${subtitle}</div><div class="btns"><button class="btn" id="again">다시 시작</button><button class="btn secondary" id="help">조작법</button></div></div>`;
+    document.getElementById('menu').innerHTML = tpl; document.getElementById('menu').style.display='';
+    document.getElementById('again').onclick = ()=>{ startGame(); };
+    document.getElementById('help').onclick = ()=>{ $menu.style.display='none'; $how.style.display=''; };
+  }
+
+  // ---------- Touch Controls (Mobile) ----------
+  function setupTouchControls(){
+    const touchWrap = document.getElementById('touch');
+    if(!touchWrap) return;
+    if(!isTouch){ touchWrap.style.display='none'; return; }
+    // Joystick
+    const stick = document.getElementById('stick');
+    const knob = stick.querySelector('.knob');
+    let active=false, pid=null, cx=0, cy=0;
+    function resetDirs(){ input.up=input.down=input.left=input.right=0; knob.style.transform='translate(-50%,-50%) translate(0px,0px)'; }
+    stick.addEventListener('pointerdown', e=>{ active=true; pid=e.pointerId; stick.setPointerCapture(pid); const r=stick.getBoundingClientRect(); cx=r.left+r.width/2; cy=r.top+r.height/2; e.preventDefault(); }, {passive:false});
+    stick.addEventListener('pointermove', e=>{ if(!active||e.pointerId!==pid) return; const dx=e.clientX-cx, dy=e.clientY-cy; const max=50; const mag=Math.hypot(dx,dy); const cl=mag>max? max/mag:1; const nx=dx*cl, ny=dy*cl; knob.style.transform=`translate(-50%,-50%) translate(${nx}px,${ny}px)`; const tx=dx/max, ty=dy/max; const th=0.35; input.left=tx<-th?1:0; input.right=tx>th?1:0; input.up=ty<-th?1:0; input.down=ty>th?1:0; e.preventDefault(); }, {passive:false});
+    function endStick(e){ if(!active||e.pointerId!==pid) return; active=false; try{ stick.releasePointerCapture(pid);}catch{} pid=null; resetDirs(); e.preventDefault(); }
+    stick.addEventListener('pointerup', endStick, {passive:false});
+    stick.addEventListener('pointercancel', endStick, {passive:false});
+    stick.addEventListener('pointerleave', endStick, {passive:false});
+
+    // Buttons
+    const btnBomb  = document.getElementById('btnBomb');
+    const btnSlow  = document.getElementById('btnSlow');
+    const btnPause = document.getElementById('btnPause');
+
+    btnBomb.addEventListener('click', e=>{ input.bomb=1; e.preventDefault(); });
+
+    const slowOn = ()=>{ input.slow=1; };
+    const slowOff= ()=>{ input.slow=0; };
+    btnSlow.addEventListener('pointerdown', e=>{ slowOn(); e.preventDefault(); }, {passive:false});
+    btnSlow.addEventListener('pointerup',   e=>{ slowOff(); e.preventDefault(); }, {passive:false});
+    btnSlow.addEventListener('pointercancel', slowOff, {passive:false});
+    btnSlow.addEventListener('pointerleave',  slowOff, {passive:false});
+
+    btnPause.addEventListener('click', e=>{ togglePause(); e.preventDefault(); });
+
+    // Tap screen to start/resume on mobile
+    canvas.addEventListener('pointerdown', e=>{
+      if(!isTouch) return;
+      if(state==='menu'){ startGame(); }
+      else if(state==='pause'){ togglePause(); }
+      else if(state==='gameover' || state==='victory'){ startGame(); }
+    }, {passive:true});
+  }
+
+  // ---------- Main Loop ----------
+  let last=0, fpsAccum=0, fpsCount=0, fpsNow=0;
+  function loop(ts){
+    requestAnimationFrame(loop);
+    if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>0.05) dt=0.05; // clamp
+    if(state!=='play') return; // paused/menu
+
+    // FPS
+    fpsAccum+=dt; fpsCount++; if(fpsAccum>=0.5){ fpsNow=(fpsCount/fpsAccum)|0; $fps.textContent=fpsNow.toString(); fpsAccum=0; fpsCount=0; }
+
+    // Update
+    update(dt);
+
+    // Render
+    render();
+  }
+  requestAnimationFrame(loop);
+
+  function update(dt){
+    // Background parallax starfield
+    drawBackground(dt);
+
+    // Inputs
+    if(input.bomb){ input.bomb=0; useBomb(); }
+
+    player.update(dt);
+
+    // Items update & pickup
+    for(const it of items) it.update(dt);
+    for(const it of items){
+      const rr = (player.r + it.r + 4); if(dist2(player,it) < rr*rr){
+        if(it.type==='life'){ lives++; spawnSpark(player.x,player.y,'#34d399'); }
+        else { bombs++; spawnSpark(player.x,player.y,'#8ab4f8'); }
+        it.dead=true; updateHUD();
+      }
+    }
+    items = items.filter(it=>!it.dead);
+
+    // Enemy bullets
+    for(const b of ebullets) b.update(dt); ebullets = ebullets.filter(b=>!b.dead);
+
+    // Boss logic
+    for(const e of enemies){ e.update(dt); }
+    enemies = enemies.filter(e=>!e.dead);
+
+    // Survival progression
+    stageTime -= dt; if(stageTime<=0){ stageClear(); }
+
+    // Particles & effects
+    for(const p of particles) p.update(dt); particles=particles.filter(p=>p.life>0);
+    drawEffects(dt);
+
+    if(freeze>0){ freeze-=dt; }
+
+    updateHUD();
+  }
+
+  function render(){
+    const w = canvas.width/DPR, h = canvas.height/DPR;
+    ctx.fillStyle='#0b0f14'; ctx.fillRect(0,0,w,h);
+
+    // Draw entities
+    for(const p of particles) p.draw();
+    for(const b of ebullets) b.draw();
+    for(const it of items) it.draw();
+    for(const e of enemies) e.draw();
+    player.draw();
+  }
+
+  // ---------- Background ----------
+  const stars = Array.from({length:160},()=>({x:Math.random()*1,y:Math.random()*1,z:rand(0.2,1)}));
+  function drawBackground(dt){
+    const w = canvas.width/DPR, h = canvas.height/DPR;
+    for(const s of stars){ s.y+= s.z*10*dt; if(s.y>1) { s.y=0; s.x=Math.random(); s.z=rand(0.2,1);} ctx.globalAlpha=s.z; const x=s.x*w, y=s.y*h; ctx.fillStyle='white'; ctx.fillRect(x,y,1.5,1.5); } ctx.globalAlpha=1;
+  }
+
+  function stageClear(){
+    flashScreen();
+    score += Math.round(200 + (stageWorld-1)*50);
+    clearBullets(true);
+    enemies.length=0;
+    nextStage();
+  }
+
+  // ---------- Game Control ----------
+  function startGame(){
+    state='play'; score=0; stageWorld=1; stageLevel=1; lives=3; bombs=2; invuln=2; grazeChain=0; bullets.length=0; ebullets.length=0; particles.length=0; enemies.length=0; effects.length=0; wantRestart=false;
+    player=new Player(); $menu.style.display='none'; $how.style.display='none'; updateHUD(); nextStage();
+  }
+  function togglePause(){ if(state==='play'){ state='pause'; showMenu('PAUSED', '게임이 일시정지되었습니다. <kbd>P</kbd>로 재개'); } else if(state==='pause'){ $menu.style.display='none'; state='play'; } }
+
+  // Restart handler
+  addEventListener('keydown', e=>{ if(e.key==='x'){ input.bomb=1; } if(e.key==='r' && (state==='gameover'||state==='victory')){ startGame(); } });
+
+  // ---------- Self Tests (non-intrusive) ----------
+  function runSelfTests(){
+    try{
+      // Resize should not attempt to set clientWidth/Height (read-only). It should set canvas.width/height only.
+      resize();
+      console.assert(canvas.width === Math.floor(window.innerWidth)*DPR, 'canvas.width should be DPI-scaled');
+      console.assert(canvas.height === Math.floor(window.innerHeight)*DPR, 'canvas.height should be DPI-scaled');
+
+      console.assert(typeof nextStage==='function', 'nextStage should exist');
+      console.assert(typeof spawnBoss==='function', 'spawnBoss should exist');
+      const before = enemies.length; spawnBoss(); const after = enemies.length; enemies.pop(); console.assert(after===before+1, 'spawnBoss should push one boss');
+      console.assert(document.getElementById('timer'), '#timer should exist');
+      console.assert(typeof updateHUD==='function', 'updateHUD should exist');
+      console.assert(SHOW_BOSS_HP===false, 'Boss HP bar should be hidden (SHOW_BOSS_HP=false)');
+      console.log('%c[SelfTest] All basic tests passed','color:#34d399');
+    }catch(err){ console.error('[SelfTest] Failed:', err); }
+  }
+  if(typeof window!=='undefined') runSelfTests();
+
+})();
+</script>
+</body>
+</html>
